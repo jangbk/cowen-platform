@@ -59,6 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Content",
     href: "/content",
     children: [
+      { label: "News Analysis", href: "/content/news-analysis" },
       { label: "Video Summaries", href: "/content/video-summaries" },
       { label: "Studies", href: "/content/studies" },
       { label: "Premium Videos", href: "/content/premium-videos" },

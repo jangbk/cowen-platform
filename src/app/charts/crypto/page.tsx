@@ -89,7 +89,7 @@ export default function CryptoChartsPage() {
       <div>
         <h1 className="text-2xl font-bold">Crypto Charts</h1>
         <p className="text-muted-foreground mt-1">
-          비트코인 및 암호화폐 차트 라이브러리 - 온체인, 가격, 파생상품, 소셜 메트릭
+          비트코인 및 암호화폐 차트 라이브러리 - 리스크, 회귀 모델, 기술적 분석, 모멘텀
         </p>
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Youtube,
   Send,
@@ -18,6 +18,7 @@ import {
   Check,
   Loader2,
   Database,
+  Trash2,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -108,25 +109,58 @@ const INITIAL_SUMMARIES: VideoSummary[] = [
   },
 ];
 
+// ─── LocalStorage Key ───────────────────────────────────────────
+const STORAGE_KEY = "video-summaries";
+
+function loadSummaries(): VideoSummary[] {
+  if (typeof window === "undefined") return INITIAL_SUMMARIES;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as VideoSummary[];
+      if (parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore */ }
+  return INITIAL_SUMMARIES;
+}
+
 // ─── Component ──────────────────────────────────────────────────
 export default function VideoSummariesPage() {
-  const [summaries, setSummaries] =
-    useState<VideoSummary[]>(INITIAL_SUMMARIES);
+  const [summaries, setSummaries] = useState<VideoSummary[]>(INITIAL_SUMMARIES);
+  const [hydrated, setHydrated] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>("1");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [notionStatus, setNotionStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [notionMessage, setNotionMessage] = useState("");
+  const [loadingStep, setLoadingStep] = useState("");
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const loaded = loadSummaries();
+    setSummaries(loaded);
+    setExpandedId(loaded[0]?.id || null);
+    setHydrated(true);
+  }, []);
+
+  // Save to localStorage whenever summaries change
+  const saveSummaries = useCallback((data: VideoSummary[]) => {
+    setSummaries(data);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch { /* storage full, ignore */ }
+  }, []);
 
   const handleAddVideo = async () => {
     if (!youtubeUrl.trim()) return;
     setIsLoading(true);
+    setLoadingStep("영상 정보 가져오는 중...");
 
     try {
-      // Fetch video metadata
+      // Step 1: Fetch video metadata + transcript
       const response = await fetch("/api/youtube/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -138,33 +172,94 @@ export default function VideoSummariesPage() {
       if (data.status !== "ok") {
         alert(`영상 정보를 가져올 수 없습니다: ${data.message}`);
         setIsLoading(false);
+        setLoadingStep("");
         return;
       }
 
-      // Create new summary placeholder
-      const newSummary: VideoSummary = {
-        id: Date.now().toString(),
-        videoUrl: youtubeUrl,
-        videoId: data.videoId,
-        title: data.title,
-        channel: data.channel,
-        date: new Date().toISOString().split("T")[0],
-        thumbnailUrl: data.thumbnailUrl,
-        summary:
-          "영상 요약을 작성해주세요. 트랜스크립트를 분석하여 핵심 내용을 정리합니다.",
-        investmentGuide: "투자 가이드를 작성해주세요.",
-        keyPoints: ["핵심 포인트를 추가해주세요"],
-        tags: [data.channel],
-        savedToNotion: false,
-      };
+      const newId = Date.now().toString();
 
-      setSummaries((prev) => [newSummary, ...prev]);
-      setYoutubeUrl("");
-      setExpandedId(newSummary.id);
+      // Step 2: If transcript exists, generate AI summary
+      if (data.transcript) {
+        setLoadingStep("AI가 영상을 분석하고 요약 중... (30초~1분 소요)");
+
+        const summaryResponse = await fetch("/api/youtube/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: data.transcript,
+            title: data.title,
+            channel: data.channel,
+          }),
+        });
+
+        const summaryData = await summaryResponse.json();
+
+        if (summaryData.status === "ok") {
+          const newSummary: VideoSummary = {
+            id: newId,
+            videoUrl: youtubeUrl,
+            videoId: data.videoId,
+            title: data.title,
+            channel: data.channel,
+            date: new Date().toISOString().split("T")[0],
+            thumbnailUrl: data.thumbnailUrl,
+            summary: summaryData.summary,
+            investmentGuide: summaryData.investmentGuide,
+            keyPoints: summaryData.keyPoints,
+            tags: summaryData.tags,
+            savedToNotion: false,
+          };
+
+          saveSummaries([newSummary, ...summaries]);
+          setYoutubeUrl("");
+          setExpandedId(newId);
+        } else {
+          // AI summarization failed - show transcript as fallback
+          const newSummary: VideoSummary = {
+            id: newId,
+            videoUrl: youtubeUrl,
+            videoId: data.videoId,
+            title: data.title,
+            channel: data.channel,
+            date: new Date().toISOString().split("T")[0],
+            thumbnailUrl: data.thumbnailUrl,
+            summary: `[AI 요약 실패: ${summaryData.message}]\n\n--- 원본 트랜스크립트 ---\n${data.transcript.slice(0, 3000)}${data.transcript.length > 3000 ? "..." : ""}`,
+            investmentGuide: "AI 요약이 실패했습니다. ANTHROPIC_API_KEY를 .env.local에 설정해주세요.",
+            keyPoints: ["트랜스크립트는 가져왔으나 AI 요약에 실패했습니다"],
+            tags: [data.channel],
+            savedToNotion: false,
+          };
+
+          saveSummaries([newSummary, ...summaries]);
+          setYoutubeUrl("");
+          setExpandedId(newId);
+        }
+      } else {
+        // No transcript available
+        const newSummary: VideoSummary = {
+          id: newId,
+          videoUrl: youtubeUrl,
+          videoId: data.videoId,
+          title: data.title,
+          channel: data.channel,
+          date: new Date().toISOString().split("T")[0],
+          thumbnailUrl: data.thumbnailUrl,
+          summary: data.message || "트랜스크립트를 가져올 수 없습니다. 자막이 없는 영상일 수 있습니다.",
+          investmentGuide: "트랜스크립트 없이는 투자 가이드를 생성할 수 없습니다.",
+          keyPoints: ["자막이 없는 영상입니다"],
+          tags: [data.channel],
+          savedToNotion: false,
+        };
+
+        saveSummaries([newSummary, ...summaries]);
+        setYoutubeUrl("");
+        setExpandedId(newId);
+      }
     } catch {
       alert("영상 정보를 가져오는데 실패했습니다.");
     } finally {
       setIsLoading(false);
+      setLoadingStep("");
     }
   };
 
@@ -193,8 +288,8 @@ export default function VideoSummariesPage() {
       if (data.status === "ok") {
         setNotionStatus("saved");
         setNotionMessage("Notion에 저장되었습니다!");
-        setSummaries((prev) =>
-          prev.map((s) =>
+        saveSummaries(
+          summaries.map((s) =>
             s.id === summary.id
               ? { ...s, savedToNotion: true, notionUrl: data.notionUrl }
               : s
@@ -231,6 +326,12 @@ ${summary.tags.join(", ")}`;
     await navigator.clipboard.writeText(text);
     setCopiedId(summary.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm("이 요약을 삭제하시겠습니까?")) return;
+    saveSummaries(summaries.filter((s) => s.id !== id));
+    if (expandedId === id) setExpandedId(null);
   };
 
   return (
@@ -272,9 +373,17 @@ ${summary.tags.join(", ")}`;
             ) : (
               <Send className="h-4 w-4" />
             )}
-            추가
+            {isLoading ? "분석 중..." : "요약 생성"}
           </button>
         </div>
+
+        {/* Loading step indicator */}
+        {isLoading && loadingStep && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2.5 text-sm text-blue-600 dark:text-blue-400">
+            <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+            {loadingStep}
+          </div>
+        )}
 
         {/* Notion status banner */}
         {notionStatus !== "idle" && (
@@ -417,6 +526,13 @@ ${summary.tags.join(", ")}`;
                       Notion에서 보기
                     </a>
                   )}
+                  <button
+                    onClick={() => handleDelete(summary.id)}
+                    className="flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors ml-auto"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    삭제
+                  </button>
                 </div>
 
                 {/* Summary Section */}

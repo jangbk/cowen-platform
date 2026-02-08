@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useMemo } from "react";
-import { ChevronRight, Search, Star, ChevronDown } from "lucide-react";
+import { Search, Star, ChevronDown, FolderClosed, FolderOpen } from "lucide-react";
 import {
   CHART_CATALOG,
   getCategoriesForSection,
@@ -167,51 +167,67 @@ export default function ChartsLayout({
             </div>
           ) : (
             // Show categorized tree
-            categories.map((cat) => {
-              const chartsInCat = filteredCharts.filter(
-                (c) => c.category === cat
-              );
-              const isExpanded = expandedCategories.has(cat);
-              return (
-                <div key={cat} className="mb-1">
-                  <button
-                    onClick={() => toggleCategory(cat)}
-                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
-                  >
-                    <span>
-                      {cat.toUpperCase()} ({chartsInCat.length})
-                    </span>
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${
-                        isExpanded ? "rotate-180" : ""
+            <div className="space-y-1">
+              {categories.map((cat) => {
+                const chartsInCat = filteredCharts.filter(
+                  (c) => c.category === cat
+                );
+                const isExpanded = expandedCategories.has(cat);
+                return (
+                  <div key={cat}>
+                    {/* ── Category header ── */}
+                    <button
+                      onClick={() => toggleCategory(cat)}
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-[11px] font-bold tracking-wide transition-colors text-left ${
+                        isExpanded
+                          ? "bg-primary/10 text-primary dark:bg-primary/15"
+                          : "text-muted-foreground hover:bg-muted"
                       }`}
-                    />
-                  </button>
-                  {isExpanded &&
-                    chartsInCat.map((chart) => (
-                      <Link
-                        key={chart.id}
-                        href={`/charts/${chart.id}`}
-                        className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm hover:bg-muted transition-colors ${
-                          pathname === `/charts/${chart.id}`
-                            ? "bg-muted font-medium"
-                            : ""
+                    >
+                      {isExpanded ? (
+                        <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <FolderClosed className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span className="flex-1 min-w-0 text-left uppercase">
+                        {cat} ({chartsInCat.length})
+                      </span>
+                      <ChevronDown
+                        className={`h-3 w-3 shrink-0 transition-transform ${
+                          isExpanded ? "rotate-180" : ""
                         }`}
-                      >
-                        <span className="truncate">{chart.title}</span>
-                        <Star
-                          className={`h-3 w-3 shrink-0 cursor-pointer ${
-                            favorites.has(chart.id)
-                              ? "fill-yellow-400 text-yellow-400"
-                              : "text-muted-foreground/30 hover:text-muted-foreground"
-                          }`}
-                          onClick={(e) => toggleFavorite(chart.id, e)}
-                        />
-                      </Link>
-                    ))}
-                </div>
-              );
-            })
+                      />
+                    </button>
+                    {/* ── Child items with left indent line ── */}
+                    {isExpanded && (
+                      <div className="ml-[11px] border-l-2 border-border/60 pl-0 mt-0.5 mb-1">
+                        {chartsInCat.map((chart) => (
+                          <Link
+                            key={chart.id}
+                            href={`/charts/${chart.id}`}
+                            className={`group flex w-full items-center justify-between rounded-r-md py-1.5 pl-3 pr-2 text-[13px] transition-colors ${
+                              pathname === `/charts/${chart.id}`
+                                ? "bg-primary/10 text-primary font-medium border-l-2 border-primary -ml-[2px] pl-[14px]"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            <span className="truncate">{chart.title}</span>
+                            <Star
+                              className={`h-3 w-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity ${
+                                favorites.has(chart.id)
+                                  ? "!opacity-100 fill-yellow-400 text-yellow-400"
+                                  : "text-muted-foreground/40 hover:text-yellow-400"
+                              }`}
+                              onClick={(e) => toggleFavorite(chart.id, e)}
+                            />
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {/* Chart count */}

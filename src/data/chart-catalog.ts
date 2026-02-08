@@ -16,78 +16,51 @@ const CRYPTO_MARKET_CAP: ChartItem[] = [
   { id: "total-market-cap", title: "Total Crypto Market Cap", description: "전체 암호화폐 시가총액 (로그 스케일, 추세선 포함)", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#2962FF", apiEndpoint: "/api/crypto/market-cap", apiParams: { type: "total" } },
   { id: "btc-market-cap", title: "Bitcoin Market Cap", description: "비트코인 시가총액 변화 추이", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#F7931A", apiEndpoint: "/api/crypto/market-cap", apiParams: { type: "btc" } },
   { id: "eth-market-cap", title: "Ethereum Market Cap", description: "이더리움 시가총액 변화 추이", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#627EEA", apiEndpoint: "/api/crypto/market-cap", apiParams: { type: "eth" } },
-  { id: "altcoin-market-cap", title: "Altcoin Market Cap", description: "비트코인 제외 알트코인 전체 시가총액", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#00BCD4" },
-  { id: "stablecoin-market-cap", title: "Stablecoin Market Cap", description: "스테이블코인(USDT, USDC, DAI 등) 총 시가총액", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#26A17B" },
+  { id: "altcoin-market-cap", title: "Altcoin Market Cap", description: "비트코인 제외 알트코인 전체 시가총액", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#00BCD4", apiEndpoint: "/api/crypto/market-cap", apiParams: { type: "altcoin" } },
+  { id: "stablecoin-market-cap", title: "Stablecoin Market Cap", description: "스테이블코인(USDT, USDC 등) 총 시가총액", section: "crypto", category: "Market Capitalization", chartType: "area", color: "#26A17B", apiEndpoint: "/api/crypto/market-cap", apiParams: { type: "stablecoin" } },
 ];
 
 const CRYPTO_RISK: ChartItem[] = [
-  { id: "btc-risk-signal", title: "Bitcoin Risk Signal", description: "비트코인 복합 리스크 지표 (0-1 범위)", section: "crypto", category: "Risk", chartType: "line", color: "#EF4444" },
-  { id: "mvrv-zscore", title: "MVRV Z-Score", description: "Market Value to Realized Value Z-Score", section: "crypto", category: "Risk", chartType: "line", color: "#8B5CF6" },
-  { id: "reserve-risk", title: "Reserve Risk", description: "장기 보유자 신뢰도 대비 가격 리스크", section: "crypto", category: "Risk", chartType: "line", color: "#F97316" },
-  { id: "fear-greed-index", title: "Fear & Greed Index", description: "공포 & 탐욕 지수 (0=극도 공포, 100=극도 탐욕)", section: "crypto", category: "Risk", chartType: "line", color: "#EAB308" },
-  { id: "nupl", title: "Net Unrealized Profit/Loss", description: "미실현 순이익/손실 비율", section: "crypto", category: "Risk", chartType: "area", color: "#10B981" },
+  { id: "btc-risk-signal", title: "Bitcoin Risk Signal", description: "비트코인 RSI 리스크 지표 (0-100 범위)", section: "crypto", category: "Risk", chartType: "line", color: "#EF4444", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "rsi" } },
+  { id: "mvrv-zscore", title: "MVRV Z-Score", description: "Market Value to Realized Value Z-Score", section: "crypto", category: "Risk", chartType: "line", color: "#8B5CF6", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "mvrv" } },
+  { id: "reserve-risk", title: "Reserve Risk", description: "장기 보유자 신뢰도 대비 가격 리스크", section: "crypto", category: "Risk", chartType: "line", color: "#F97316", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365" } },
+  { id: "fear-greed-index", title: "Fear & Greed Index", description: "공포 & 탐욕 지수 (0=극도 공포, 100=극도 탐욕)", section: "crypto", category: "Risk", chartType: "line", color: "#EAB308", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365" } },
+  { id: "nupl", title: "Net Unrealized Profit/Loss", description: "미실현 순이익/손실 비율", section: "crypto", category: "Risk", chartType: "area", color: "#10B981", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365" } },
 ];
 
 const CRYPTO_LOG_REGRESSION: ChartItem[] = [
-  { id: "btc-log-regression", title: "Bitcoin Log Regression", description: "비트코인 로그 회귀 밴드 (장기 공정가치)", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#2962FF" },
-  { id: "rainbow-chart", title: "Rainbow Chart", description: "비트코인 레인보우 가격 밴드", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#FF6B6B" },
-  { id: "stock-to-flow", title: "Stock-to-Flow Model", description: "S2F 모델 기반 비트코인 가치 평가", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#F7931A" },
-  { id: "power-law-corridor", title: "Power Law Corridor", description: "비트코인 거듭제곱 법칙 가격 회랑", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#8B5CF6" },
+  { id: "btc-log-regression", title: "Bitcoin Log Regression", description: "비트코인 로그 회귀 밴드 (장기 공정가치 ±2σ)", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#2962FF", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "logreg" } },
+  { id: "rainbow-chart", title: "Rainbow Chart", description: "비트코인 레인보우 가격 밴드 (9단계 가치 평가)", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#FF6B6B", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "rainbow" } },
+  { id: "stock-to-flow", title: "Stock-to-Flow Model", description: "S2F 모델 기반 비트코인 공정가치 비교", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#F7931A", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "s2f" } },
+  { id: "power-law-corridor", title: "Power Law Corridor", description: "비트코인 거듭제곱 법칙 가격 회랑 (±2σ)", section: "crypto", category: "Logarithmic Regression", chartType: "line", color: "#8B5CF6", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "powerlaw" } },
 ];
 
 const CRYPTO_ROI: ChartItem[] = [
-  { id: "btc-roi-ytd", title: "Bitcoin ROI (Year-to-Date)", description: "올해 비트코인 투자 수익률", section: "crypto", category: "Return On Investment", chartType: "line", color: "#10B981" },
-  { id: "btc-roi-from-low", title: "Bitcoin ROI from Cycle Low", description: "사이클 저점 대비 BTC 수익률 (사이클 비교)", section: "crypto", category: "Return On Investment", chartType: "line", color: "#2962FF" },
-  { id: "btc-roi-from-peak", title: "Bitcoin ROI from Peak", description: "고점 대비 BTC 하락 추이 (사이클 비교)", section: "crypto", category: "Return On Investment", chartType: "line", color: "#EF4444" },
-  { id: "btc-vs-gold-roi", title: "BTC vs Gold ROI", description: "비트코인 대 금 수익률 비교", section: "crypto", category: "Return On Investment", chartType: "line", color: "#F7931A" },
-  { id: "btc-vs-sp500-roi", title: "BTC vs S&P 500 ROI", description: "비트코인 대 S&P 500 수익률 비교", section: "crypto", category: "Return On Investment", chartType: "line", color: "#627EEA" },
+  { id: "btc-vs-gold-roi", title: "BTC vs Gold ROI", description: "비트코인 대 금 수익률 비교 (정규화)", section: "crypto", category: "Return On Investment", chartType: "line", color: "#F7931A", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "compare_gold" } },
+  { id: "btc-vs-sp500-roi", title: "BTC vs S&P 500 ROI", description: "비트코인 대 S&P 500 수익률 비교 (정규화)", section: "crypto", category: "Return On Investment", chartType: "line", color: "#627EEA", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "compare_sp500" } },
 ];
 
 const CRYPTO_MA: ChartItem[] = [
-  { id: "200-week-ma", title: "200-Week Moving Average", description: "200주 이동평균선 (장기 지지선)", section: "crypto", category: "Moving Averages", chartType: "line", color: "#EF4444" },
-  { id: "pi-cycle-top", title: "Pi Cycle Top Indicator", description: "111일 MA x 2 와 350일 MA 크로스", section: "crypto", category: "Moving Averages", chartType: "line", color: "#8B5CF6" },
-  { id: "golden-ratio-multiplier", title: "Golden Ratio Multiplier", description: "350일 MA x 황금비율 밴드", section: "crypto", category: "Moving Averages", chartType: "line", color: "#F7931A" },
-  { id: "2y-ma-multiplier", title: "2-Year MA Multiplier", description: "2년 이동평균 x5 상단 밴드", section: "crypto", category: "Moving Averages", chartType: "line", color: "#10B981" },
+  { id: "200-week-ma", title: "200-Week Moving Average", description: "200주 이동평균선 (장기 지지선)", section: "crypto", category: "Moving Averages", chartType: "line", color: "#EF4444", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "sma" } },
+  { id: "pi-cycle-top", title: "Pi Cycle Top Indicator", description: "111일 MA x 2 와 350일 MA 크로스", section: "crypto", category: "Moving Averages", chartType: "line", color: "#8B5CF6", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "sma" } },
+  { id: "golden-ratio-multiplier", title: "Golden Ratio Multiplier", description: "350일 MA x 황금비율 밴드", section: "crypto", category: "Moving Averages", chartType: "line", color: "#F7931A", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "sma" } },
+  { id: "2y-ma-multiplier", title: "2-Year MA Multiplier", description: "2년 이동평균 x5 상단 밴드", section: "crypto", category: "Moving Averages", chartType: "line", color: "#10B981", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "sma" } },
 ];
 
 const CRYPTO_MOMENTUM: ChartItem[] = [
-  { id: "btc-rsi", title: "Bitcoin RSI (14D)", description: "14일 상대강도지수", section: "crypto", category: "Momentum", chartType: "line", color: "#2962FF" },
-  { id: "btc-macd", title: "Bitcoin MACD", description: "MACD (12, 26, 9) 시그널", section: "crypto", category: "Momentum", chartType: "bar", color: "#10B981" },
-  { id: "stochastic-rsi", title: "Stochastic RSI", description: "스토캐스틱 RSI (14, 14, 3, 3)", section: "crypto", category: "Momentum", chartType: "line", color: "#F97316" },
+  { id: "btc-rsi", title: "Bitcoin RSI (14D)", description: "14일 상대강도지수", section: "crypto", category: "Momentum", chartType: "line", color: "#2962FF", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "rsi" } },
+  { id: "btc-macd", title: "Bitcoin MACD", description: "MACD (12, 26, 9) 시그널", section: "crypto", category: "Momentum", chartType: "bar", color: "#10B981", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "macd" } },
+  { id: "stochastic-rsi", title: "Stochastic RSI", description: "스토캐스틱 RSI (14, 14, 3, 3)", section: "crypto", category: "Momentum", chartType: "line", color: "#F97316", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "rsi" } },
 ];
 
 const CRYPTO_TA: ChartItem[] = [
-  { id: "btc-support-resistance", title: "Support & Resistance Levels", description: "주요 지지/저항 레벨", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#EF4444" },
-  { id: "btc-fibonacci", title: "Fibonacci Retracement", description: "피보나치 되돌림 레벨", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#8B5CF6" },
-  { id: "btc-bollinger", title: "Bollinger Bands", description: "볼린저 밴드 (20일, 2 표준편차)", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#2962FF" },
+  { id: "btc-support-resistance", title: "Support & Resistance Levels", description: "주요 지지/저항 레벨", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#EF4444", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365" } },
+  { id: "btc-fibonacci", title: "Fibonacci Retracement", description: "피보나치 되돌림 레벨", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#8B5CF6", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365" } },
+  { id: "btc-bollinger", title: "Bollinger Bands", description: "볼린저 밴드 (20일, 2 표준편차)", section: "crypto", category: "Technical Analysis", chartType: "line", color: "#2962FF", apiEndpoint: "/api/crypto/history", apiParams: { coin: "bitcoin", days: "365", metric: "bollinger" } },
 ];
 
-const CRYPTO_AD: ChartItem[] = [
-  { id: "advance-decline-line", title: "Advance/Decline Line", description: "상승/하락 종목 비율 누적선", section: "crypto", category: "Advances & Declines", chartType: "line", color: "#10B981" },
-  { id: "new-highs-lows", title: "New Highs vs New Lows", description: "신고가/신저가 종목수 비교", section: "crypto", category: "Advances & Declines", chartType: "bar", color: "#2962FF" },
-];
-
-const CRYPTO_ONCHAIN: ChartItem[] = [
-  { id: "btc-active-addresses", title: "Bitcoin Active Addresses", description: "일일 활성 주소 수", section: "crypto", category: "On-Chain", subcategory: "Addresses", chartType: "line", color: "#2962FF" },
-  { id: "btc-hodl-waves", title: "HODL Waves", description: "보유 기간별 비트코인 분포", section: "crypto", category: "On-Chain", subcategory: "Supply", chartType: "area", color: "#F7931A" },
-  { id: "btc-exchange-reserves", title: "Exchange Reserves", description: "거래소 보유 비트코인 잔고", section: "crypto", category: "On-Chain", subcategory: "Exchanges", chartType: "area", color: "#EF4444" },
-  { id: "btc-sopr", title: "SOPR (Spent Output Profit Ratio)", description: "사용된 출력의 수익 비율", section: "crypto", category: "On-Chain", subcategory: "Valuation", chartType: "line", color: "#10B981" },
-  { id: "btc-hash-rate", title: "Bitcoin Hash Rate", description: "비트코인 네트워크 해시레이트", section: "crypto", category: "On-Chain", subcategory: "Mining", chartType: "area", color: "#8B5CF6" },
-  { id: "btc-nvt-ratio", title: "NVT Ratio", description: "Network Value to Transactions Ratio", section: "crypto", category: "On-Chain", subcategory: "Valuation", chartType: "line", color: "#F97316" },
-  { id: "btc-transaction-count", title: "Daily Transaction Count", description: "일일 트랜잭션 수", section: "crypto", category: "On-Chain", subcategory: "Transactions", chartType: "line", color: "#00BCD4" },
-];
-
-const CRYPTO_DERIVATIVES: ChartItem[] = [
-  { id: "btc-open-interest", title: "Bitcoin Open Interest", description: "비트코인 선물 미결제약정", section: "crypto", category: "Derivatives", chartType: "area", color: "#2962FF" },
-  { id: "btc-funding-rate", title: "Funding Rate", description: "무기한 선물 펀딩 비율", section: "crypto", category: "Derivatives", chartType: "bar", color: "#10B981" },
-  { id: "btc-long-short-ratio", title: "Long/Short Ratio", description: "롱/숏 비율", section: "crypto", category: "Derivatives", chartType: "line", color: "#F97316" },
-];
-
-const CRYPTO_SOCIAL: ChartItem[] = [
-  { id: "btc-youtube-views", title: "Bitcoin YouTube Views", description: "비트코인 관련 유튜브 조회수 추이", section: "crypto", category: "Social", chartType: "area", color: "#EF4444" },
-  { id: "btc-twitter-mentions", title: "Bitcoin Twitter Mentions", description: "비트코인 트위터 멘션 수", section: "crypto", category: "Social", chartType: "area", color: "#1DA1F2" },
-  { id: "btc-google-trends", title: "Bitcoin Google Trends", description: "비트코인 구글 트렌드 검색량", section: "crypto", category: "Social", chartType: "line", color: "#4285F4" },
-];
+// On-Chain, Derivatives, Social, Advances & Declines categories removed
+// These charts lacked real API data and only showed generic BTC price charts
 
 // ─── Macro Charts ────────────────────────────────────────────────
 const MACRO_GDP: ChartItem[] = [
@@ -97,26 +70,26 @@ const MACRO_GDP: ChartItem[] = [
 
 const MACRO_INFLATION: ChartItem[] = [
   { id: "us-cpi", title: "US CPI (YoY)", description: "미국 소비자물가지수 전년대비 변화율", section: "macro", category: "Inflation", chartType: "line", color: "#F97316", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "inflation" } },
-  { id: "us-pce", title: "Core PCE", description: "핵심 개인소비지출 물가지수", section: "macro", category: "Inflation", chartType: "line", color: "#EF4444" },
-  { id: "breakeven-inflation", title: "Breakeven Inflation Rate", description: "5년 기대 인플레이션율", section: "macro", category: "Inflation", chartType: "line", color: "#EAB308" },
+  { id: "us-pce", title: "Core PCE", description: "핵심 개인소비지출 물가지수", section: "macro", category: "Inflation", chartType: "line", color: "#EF4444", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "pce" } },
+  { id: "breakeven-inflation", title: "Breakeven Inflation Rate", description: "5년 기대 인플레이션율", section: "macro", category: "Inflation", chartType: "line", color: "#EAB308", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "breakeven" } },
 ];
 
 const MACRO_EMPLOYMENT: ChartItem[] = [
   { id: "us-unemployment", title: "US Unemployment Rate", description: "미국 실업률", section: "macro", category: "Employment", chartType: "line", color: "#EF4444", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "unemployment" } },
-  { id: "us-nonfarm-payrolls", title: "Nonfarm Payrolls", description: "비농업 고용 변동 (월별)", section: "macro", category: "Employment", chartType: "bar", color: "#2962FF" },
-  { id: "us-initial-claims", title: "Initial Jobless Claims", description: "신규 실업수당 청구건수 (주별)", section: "macro", category: "Employment", chartType: "line", color: "#F97316" },
+  { id: "us-nonfarm-payrolls", title: "Nonfarm Payrolls", description: "비농업 고용 변동 (월별)", section: "macro", category: "Employment", chartType: "bar", color: "#2962FF", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "nonfarm" } },
+  { id: "us-initial-claims", title: "Initial Jobless Claims", description: "신규 실업수당 청구건수 (주별)", section: "macro", category: "Employment", chartType: "line", color: "#F97316", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "initialclaims" } },
 ];
 
 const MACRO_RATES: ChartItem[] = [
   { id: "fed-funds-rate", title: "Federal Funds Rate", description: "미국 연방기금금리", section: "macro", category: "Interest Rates", chartType: "line", color: "#8B5CF6", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "fedfunds" } },
-  { id: "us-10y-yield", title: "US 10-Year Treasury Yield", description: "미국 10년 국채 수익률", section: "macro", category: "Interest Rates", chartType: "line", color: "#2962FF" },
-  { id: "us-2y-10y-spread", title: "2Y-10Y Yield Spread", description: "2년-10년 국채 수익률 스프레드 (역전 = 경기침체 신호)", section: "macro", category: "Interest Rates", chartType: "area", color: "#EF4444" },
-  { id: "us-dollar-index", title: "US Dollar Index (DXY)", description: "미국 달러 인덱스", section: "macro", category: "Interest Rates", chartType: "line", color: "#10B981" },
+  { id: "us-10y-yield", title: "US 10-Year Treasury Yield", description: "미국 10년 국채 수익률", section: "macro", category: "Interest Rates", chartType: "line", color: "#2962FF", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "t10y" } },
+  { id: "us-2y-10y-spread", title: "2Y-10Y Yield Spread", description: "2년-10년 국채 수익률 스프레드 (역전 = 경기침체 신호)", section: "macro", category: "Interest Rates", chartType: "area", color: "#EF4444", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "t10y2y" } },
+  { id: "us-dollar-index", title: "US Dollar Index (DXY)", description: "미국 달러 인덱스", section: "macro", category: "Interest Rates", chartType: "line", color: "#10B981", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "dxy" } },
 ];
 
 const MACRO_MONEY: ChartItem[] = [
-  { id: "us-m2-money-supply", title: "M2 Money Supply", description: "미국 M2 통화량", section: "macro", category: "Money Supply", chartType: "area", color: "#2962FF" },
-  { id: "fed-balance-sheet", title: "Fed Balance Sheet", description: "연준 대차대조표 규모", section: "macro", category: "Money Supply", chartType: "area", color: "#8B5CF6" },
+  { id: "us-m2-money-supply", title: "M2 Money Supply", description: "미국 M2 통화량", section: "macro", category: "Money Supply", chartType: "area", color: "#2962FF", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "m2" } },
+  { id: "fed-balance-sheet", title: "Fed Balance Sheet", description: "연준 대차대조표 규모", section: "macro", category: "Money Supply", chartType: "area", color: "#8B5CF6", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "fedbalance" } },
 ];
 
 // ─── TradFi Charts ───────────────────────────────────────────────
@@ -128,12 +101,12 @@ const TRADFI_FUNDAMENTALS: ChartItem[] = [
 ];
 
 const TRADFI_PRICE: ChartItem[] = [
-  { id: "sp500-index", title: "S&P 500 Index", description: "S&P 500 지수 추이", section: "tradfi", category: "Price Metrics", chartType: "area", color: "#2962FF" },
-  { id: "nasdaq-composite", title: "Nasdaq Composite", description: "나스닥 종합지수 추이", section: "tradfi", category: "Price Metrics", chartType: "area", color: "#00BCD4" },
-  { id: "gold-price", title: "Gold Price (XAU/USD)", description: "금 현물 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#F7931A" },
-  { id: "silver-price", title: "Silver Price (XAG/USD)", description: "은 현물 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#9CA3AF" },
-  { id: "crude-oil-price", title: "Crude Oil (WTI)", description: "WTI 원유 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#1F2937" },
-  { id: "vix-index", title: "VIX Volatility Index", description: "공포지수 (S&P 500 옵션 내재변동성)", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#EF4444" },
+  { id: "sp500-index", title: "S&P 500 Index", description: "S&P 500 지수 추이", section: "tradfi", category: "Price Metrics", chartType: "area", color: "#2962FF", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "sp500" } },
+  { id: "nasdaq-composite", title: "Nasdaq Composite", description: "나스닥 종합지수 추이", section: "tradfi", category: "Price Metrics", chartType: "area", color: "#00BCD4", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "nasdaq" } },
+  { id: "gold-price", title: "Gold Price (XAU/USD)", description: "금 현물 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#F7931A", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "goldprice" } },
+  { id: "silver-price", title: "Silver Price (XAG/USD)", description: "은 현물 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#9CA3AF", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "silverprice" } },
+  { id: "crude-oil-price", title: "Crude Oil (WTI)", description: "WTI 원유 가격", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#1F2937", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "oilprice" } },
+  { id: "vix-index", title: "VIX Volatility Index", description: "공포지수 (S&P 500 옵션 내재변동성)", section: "tradfi", category: "Price Metrics", chartType: "line", color: "#EF4444", apiEndpoint: "/api/macro/indicators", apiParams: { indicator: "vix" } },
 ];
 
 // ─── Export All ──────────────────────────────────────────────────
@@ -145,10 +118,6 @@ export const CHART_CATALOG: ChartItem[] = [
   ...CRYPTO_MA,
   ...CRYPTO_MOMENTUM,
   ...CRYPTO_TA,
-  ...CRYPTO_AD,
-  ...CRYPTO_ONCHAIN,
-  ...CRYPTO_DERIVATIVES,
-  ...CRYPTO_SOCIAL,
   ...MACRO_GDP,
   ...MACRO_INFLATION,
   ...MACRO_EMPLOYMENT,

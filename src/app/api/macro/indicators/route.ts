@@ -37,6 +37,103 @@ const FRED_SERIES: Record<
     unit: "%",
     frequency: "monthly",
   },
+  // Additional FRED series for chart pages
+  t10y2y: {
+    seriesId: "T10Y2Y",
+    label: "10-Year minus 2-Year Treasury Spread",
+    unit: "%",
+    frequency: "daily",
+  },
+  t10y: {
+    seriesId: "DGS10",
+    label: "10-Year Treasury Yield",
+    unit: "%",
+    frequency: "daily",
+  },
+  breakeven: {
+    seriesId: "T5YIE",
+    label: "5-Year Breakeven Inflation Rate",
+    unit: "%",
+    frequency: "daily",
+  },
+  m2: {
+    seriesId: "M2SL",
+    label: "M2 Money Supply",
+    unit: "B$",
+    frequency: "monthly",
+  },
+  fedbalance: {
+    seriesId: "WALCL",
+    label: "Fed Total Assets (Balance Sheet)",
+    unit: "M$",
+    frequency: "weekly",
+  },
+  initialclaims: {
+    seriesId: "ICSA",
+    label: "Initial Jobless Claims",
+    unit: "",
+    frequency: "weekly",
+  },
+  nonfarm: {
+    seriesId: "PAYEMS",
+    label: "Total Nonfarm Payrolls",
+    unit: "K",
+    frequency: "monthly",
+  },
+  pce: {
+    seriesId: "PCEPI",
+    label: "PCE Price Index",
+    unit: "index",
+    frequency: "monthly",
+  },
+  dxy: {
+    seriesId: "DTWEXBGS",
+    label: "Trade Weighted US Dollar Index",
+    unit: "index",
+    frequency: "daily",
+  },
+  vix: {
+    seriesId: "VIXCLS",
+    label: "CBOE Volatility Index (VIX)",
+    unit: "",
+    frequency: "daily",
+  },
+  sp500: {
+    seriesId: "SP500",
+    label: "S&P 500 Index",
+    unit: "",
+    frequency: "daily",
+  },
+  nasdaq: {
+    seriesId: "NASDAQCOM",
+    label: "NASDAQ Composite Index",
+    unit: "",
+    frequency: "daily",
+  },
+  goldprice: {
+    seriesId: "GOLDAMGBD228NLBM",
+    label: "Gold Fixing Price (London)",
+    unit: "$/oz",
+    frequency: "daily",
+  },
+  silverprice: {
+    seriesId: "SLVPRUSD",
+    label: "Silver Fixing Price (London)",
+    unit: "$/oz",
+    frequency: "daily",
+  },
+  oilprice: {
+    seriesId: "DCOILWTICO",
+    label: "Crude Oil Prices: WTI",
+    unit: "$/barrel",
+    frequency: "daily",
+  },
+  cape: {
+    seriesId: "MEHOINUSA672N",
+    label: "Real Median Household Income",
+    unit: "$",
+    frequency: "annual",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -181,6 +278,59 @@ function generateFedFunds(): Array<{ date: string; value: string }> {
   });
 }
 
+// Generic sample generator for series without dedicated generators
+function generateGenericSample(
+  indicator: string,
+  config: { frequency: string; unit: string },
+): Array<{ date: string; value: string }> {
+  const DEFAULTS: Record<string, { base: number; volatility: number }> = {
+    t10y2y: { base: 0.5, volatility: 0.8 },
+    t10y: { base: 4.0, volatility: 0.5 },
+    breakeven: { base: 2.3, volatility: 0.3 },
+    m2: { base: 21000, volatility: 300 },
+    fedbalance: { base: 7500000, volatility: 200000 },
+    initialclaims: { base: 220000, volatility: 15000 },
+    nonfarm: { base: 157000, volatility: 500 },
+    pce: { base: 125, volatility: 1.5 },
+    dxy: { base: 103, volatility: 3 },
+    vix: { base: 18, volatility: 5 },
+    sp500: { base: 5200, volatility: 200 },
+    nasdaq: { base: 16500, volatility: 600 },
+    goldprice: { base: 2300, volatility: 80 },
+    silverprice: { base: 28, volatility: 3 },
+    oilprice: { base: 75, volatility: 8 },
+    cape: { base: 75000, volatility: 2000 },
+  };
+
+  const preset = DEFAULTS[indicator] || { base: 100, volatility: 10 };
+  const isDaily = config.frequency === "daily" || config.frequency === "weekly";
+  const dates = isDaily ? dailyDates(3) : monthlyDates(5);
+
+  let value = preset.base;
+  return dates.map((date, i) => {
+    const noise = Math.sin(i * 0.07 + indicator.length) * preset.volatility * 0.5 +
+      Math.sin(i * 0.03 + indicator.length * 2) * preset.volatility * 0.3;
+    value = preset.base + noise;
+    return { date, value: value.toFixed(2) };
+  });
+}
+
+function dailyDates(years: number): string[] {
+  const dates: string[] = [];
+  const now = new Date();
+  const start = new Date(now.getFullYear() - years, now.getMonth(), now.getDate());
+  const cursor = new Date(start);
+  while (cursor <= now) {
+    // Skip weekends for financial data
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      dates.push(cursor.toISOString().split("T")[0]);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
 const SAMPLE_GENERATORS: Record<
   string,
   () => Array<{ date: string; value: string }>
@@ -236,7 +386,7 @@ export async function GET(request: NextRequest) {
 
   // Fallback: sample data
   const generator = SAMPLE_GENERATORS[indicator];
-  const sampleData = generator();
+  const sampleData = generator ? generator() : generateGenericSample(indicator, config);
 
   return NextResponse.json(
     {
