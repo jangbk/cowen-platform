@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Building, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Building, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Data
@@ -69,7 +69,7 @@ const SOL_HOLDINGS: CompanyHolding[] = [
 
 type Tab = "bitcoin" | "ethereum" | "solana";
 
-const PRICES: Record<Tab, number> = { bitcoin: 98420, ethereum: 3285, solana: 198 };
+const DEFAULT_PRICES: Record<Tab, number> = { bitcoin: 98420, ethereum: 3285, solana: 198 };
 const SUPPLIES: Record<Tab, number> = { bitcoin: 19600000, ethereum: 120200000, solana: 589000000 };
 const SYMBOLS: Record<Tab, string> = { bitcoin: "BTC", ethereum: "ETH", solana: "SOL" };
 
@@ -159,18 +159,45 @@ export default function CryptoTreasuriesPage() {
   const [tab, setTab] = useState<Tab>("bitcoin");
   const [sortKey, setSortKey] = useState<"held" | "value">("held");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [livePrices, setLivePrices] = useState<Record<Tab, number>>(DEFAULT_PRICES);
+  const [priceSource, setPriceSource] = useState<string>("loading");
+
+  useEffect(() => {
+    async function fetchPrices() {
+      try {
+        const res = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd",
+          { next: { revalidate: 60 } } as RequestInit
+        );
+        if (!res.ok) throw new Error("CoinGecko error");
+        const data = await res.json();
+        setLivePrices({
+          bitcoin: data.bitcoin?.usd || DEFAULT_PRICES.bitcoin,
+          ethereum: data.ethereum?.usd || DEFAULT_PRICES.ethereum,
+          solana: data.solana?.usd || DEFAULT_PRICES.solana,
+        });
+        setPriceSource("CoinGecko (실시간)");
+      } catch {
+        setPriceSource("기본값 (CoinGecko 연결 실패)");
+      }
+    }
+    fetchPrices();
+  }, []);
 
   const companies = useMemo(() => {
     const data = tab === "bitcoin" ? BTC_COMPANIES : tab === "ethereum" ? ETH_COMPANIES : SOL_HOLDINGS;
-    return [...data].sort((a, b) => (sortDir === "desc" ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]));
-  }, [tab, sortKey, sortDir]);
+    // Recalculate values based on live prices
+    const p = livePrices[tab];
+    const updated = data.map((c) => ({ ...c, value: c.held * p }));
+    return [...updated].sort((a, b) => (sortDir === "desc" ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]));
+  }, [tab, sortKey, sortDir, livePrices]);
 
   const etfs = tab === "bitcoin" ? BTC_ETFS : tab === "ethereum" ? ETH_ETFS : [];
 
   const totalCompany = companies.reduce((s, c) => s + c.held, 0);
   const totalETF = etfs.reduce((s, e) => s + e.held, 0);
   const totalAll = totalCompany + totalETF;
-  const price = PRICES[tab];
+  const price = livePrices[tab];
   const supply = SUPPLIES[tab];
   const sym = SYMBOLS[tab];
 
@@ -216,6 +243,24 @@ export default function CryptoTreasuriesPage() {
         <p className="text-muted-foreground">
           기업, ETF, 재단의 암호화폐 보유 현황 추적
         </p>
+        <div className="mt-1.5 flex items-center gap-3">
+          {priceSource === "loading" ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <RefreshCw className="h-3 w-3 animate-spin" /> 가격 로딩 중...
+            </span>
+          ) : priceSource.includes("실시간") ? (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
+              <Wifi className="h-3 w-3" /> {priceSource}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <WifiOff className="h-3 w-3" /> {priceSource}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {SYMBOLS[tab]}: ${price.toLocaleString()}
+          </span>
+        </div>
       </div>
 
       {/* Tabs */}

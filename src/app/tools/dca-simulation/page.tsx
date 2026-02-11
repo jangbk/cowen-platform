@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
   Calculator,
@@ -9,6 +9,8 @@ import {
   TrendingUp,
   Loader2,
   ChevronDown,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 
 const LightweightChartWrapper = dynamic(
@@ -24,7 +26,7 @@ const LightweightChartWrapper = dynamic(
 );
 
 // ---------------------------------------------------------------------------
-// DCA Calculation Engine
+// Types
 // ---------------------------------------------------------------------------
 type Frequency = "daily" | "weekly" | "biweekly" | "monthly";
 type Strategy = "equal" | "lumpsum" | "dynamic";
@@ -39,60 +41,14 @@ interface Trade {
   portfolioValue: number;
 }
 
-function generatePriceHistory(
-  asset: string,
-  startDate: string,
-  endDate: string
-): Array<{ date: string; price: number }> {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const days = Math.floor((end.getTime() - start.getTime()) / 86400000);
-
-  // Deterministic seed based on asset
-  let seed = 0;
-  for (let i = 0; i < asset.length; i++) seed = ((seed << 5) - seed + asset.charCodeAt(i)) | 0;
-  seed = Math.abs(seed);
-
-  const basePrice: Record<string, number> = {
-    BTC: 29000, ETH: 1800, SOL: 22, ADA: 0.35, BNB: 240, XRP: 0.55,
-    SPX: 3800, XAU: 1850, AGG: 100,
-  };
-  const volatility: Record<string, number> = {
-    BTC: 0.035, ETH: 0.04, SOL: 0.055, ADA: 0.05, BNB: 0.035, XRP: 0.045,
-    SPX: 0.012, XAU: 0.008, AGG: 0.003,
-  };
-  const trend: Record<string, number> = {
-    BTC: 0.0015, ETH: 0.001, SOL: 0.002, ADA: 0.0005, BNB: 0.001, XRP: 0.001,
-    SPX: 0.0005, XAU: 0.0003, AGG: 0.0001,
-  };
-
-  const bp = basePrice[asset] || 100;
-  const vol = volatility[asset] || 0.03;
-  const tr = trend[asset] || 0.001;
-
-  const prices: Array<{ date: string; price: number }> = [];
-  let price = bp;
-
-  for (let d = 0; d <= days; d++) {
-    const date = new Date(start);
-    date.setDate(date.getDate() + d);
-
-    const noise =
-      Math.sin(d * 0.08 + seed) * vol * bp * 0.5 +
-      Math.sin(d * 0.03 + seed * 2) * vol * bp * 0.8 +
-      (((seed * (d + 1) * 13) % 1000) / 500 - 1) * vol * bp * 0.3;
-
-    price = Math.max(bp * 0.1, price + noise + tr * bp);
-
-    prices.push({
-      date: date.toISOString().split("T")[0],
-      price: Math.round(price * 100) / 100,
-    });
-  }
-
-  return prices;
+interface PricePoint {
+  date: string;
+  price: number;
 }
 
+// ---------------------------------------------------------------------------
+// DCA Calculation Engine
+// ---------------------------------------------------------------------------
 function shouldBuy(
   date: string,
   frequency: Frequency,
@@ -117,7 +73,7 @@ function shouldBuy(
 }
 
 function runDCA(
-  prices: Array<{ date: string; price: number }>,
+  prices: PricePoint[],
   amount: number,
   frequency: Frequency,
   strategy: Strategy,
@@ -128,8 +84,15 @@ function runDCA(
   let totalUnits = 0;
 
   if (strategy === "lumpsum") {
-    // Invest everything at start
-    const lumpAmount = amount * (frequency === "daily" ? 365 : frequency === "weekly" ? 52 : frequency === "biweekly" ? 26 : 12);
+    const lumpAmount =
+      amount *
+      (frequency === "daily"
+        ? 365
+        : frequency === "weekly"
+        ? 52
+        : frequency === "biweekly"
+        ? 26
+        : 12);
     const firstPrice = prices[0].price;
     totalInvested = lumpAmount;
     totalUnits = lumpAmount / firstPrice;
@@ -144,7 +107,6 @@ function runDCA(
       portfolioValue: totalUnits * firstPrice,
     });
 
-    // Track portfolio value on each price point
     for (let i = 1; i < prices.length; i++) {
       if (shouldBuy(prices[i].date, frequency, startDate)) {
         trades.push({
@@ -164,8 +126,8 @@ function runDCA(
 
       let buyAmount = amount;
       if (strategy === "dynamic") {
-        // Dynamic: invest more when price is below average, less when above
-        const avgPrice = totalUnits > 0 ? totalInvested / totalUnits : prices[i].price;
+        const avgPrice =
+          totalUnits > 0 ? totalInvested / totalUnits : prices[i].price;
         const ratio = avgPrice / prices[i].price;
         buyAmount = amount * Math.max(0.5, Math.min(2, ratio));
       }
@@ -190,36 +152,94 @@ function runDCA(
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Assets (CoinGecko 지원)
 // ---------------------------------------------------------------------------
 const ASSETS = [
-  { id: "BTC", name: "Bitcoin" },
-  { id: "ETH", name: "Ethereum" },
-  { id: "SOL", name: "Solana" },
-  { id: "BNB", name: "BNB" },
-  { id: "XRP", name: "XRP" },
-  { id: "ADA", name: "Cardano" },
-  { id: "SPX", name: "S&P 500" },
-  { id: "XAU", name: "Gold" },
+  { id: "BTC", name: "Bitcoin", since: "2013" },
+  { id: "ETH", name: "Ethereum", since: "2015" },
+  { id: "SOL", name: "Solana", since: "2020" },
+  { id: "BNB", name: "BNB", since: "2017" },
+  { id: "XRP", name: "XRP", since: "2014" },
+  { id: "ADA", name: "Cardano", since: "2017" },
+  { id: "DOGE", name: "Dogecoin", since: "2014" },
+  { id: "AVAX", name: "Avalanche", since: "2020" },
+  { id: "DOT", name: "Polkadot", since: "2020" },
+  { id: "LINK", name: "Chainlink", since: "2017" },
+  { id: "ATOM", name: "Cosmos", since: "2019" },
+  { id: "UNI", name: "Uniswap", since: "2020" },
+  { id: "NEAR", name: "NEAR Protocol", since: "2020" },
+  { id: "TRX", name: "TRON", since: "2017" },
+  { id: "MATIC", name: "Polygon", since: "2019" },
+  { id: "AAVE", name: "Aave", since: "2020" },
+  { id: "LTC", name: "Litecoin", since: "2013" },
+  { id: "SUI", name: "Sui", since: "2023" },
 ];
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 export default function DCASimulationPage() {
+  // Settings
   const [asset, setAsset] = useState("BTC");
   const [amount, setAmount] = useState("500");
   const [frequency, setFrequency] = useState<Frequency>("monthly");
   const [strategy, setStrategy] = useState<Strategy>("equal");
-  const [startDate, setStartDate] = useState("2022-01-01");
-  const [endDate, setEndDate] = useState("2025-12-31");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() =>
+    new Date().toISOString().split("T")[0]
+  );
   const [showTradeHistory, setShowTradeHistory] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
+  // Price data state
+  const [priceData, setPriceData] = useState<PricePoint[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Fetch real price data from CoinGecko via API route
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setDataError(null);
+
+    fetch(
+      `/api/tools/dca-history?asset=${asset}&from=${startDate}&to=${endDate}`,
+      { signal: controller.signal }
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          setDataError(data.error);
+          setPriceData(null);
+          setNotice(null);
+        } else {
+          setPriceData(data.prices);
+          setNotice(data.notice || null);
+        }
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setDataError("가격 데이터를 불러오는데 실패했습니다.");
+          setPriceData(null);
+        }
+      })
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, [asset, startDate, endDate]);
+
+  // Compute DCA results (sync, from cached price data)
   const results = useMemo(() => {
+    if (!priceData || priceData.length < 2) return null;
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) return null;
 
-    const prices = generatePriceHistory(asset, startDate, endDate);
-    if (prices.length < 2) return null;
-
-    const trades = runDCA(prices, amt, frequency, strategy, startDate);
+    const trades = runDCA(priceData, amt, frequency, strategy, startDate);
     if (trades.length === 0) return null;
 
     const lastTrade = trades[trades.length - 1];
@@ -231,44 +251,114 @@ export default function DCASimulationPage() {
         lastTrade.totalInvested) *
       100;
 
-    // Chart data: portfolio value over time
     const chartData = trades.map((t) => ({
       time: t.date,
       value: t.portfolioValue,
     }));
 
-    // Invested line data
-    const investedData = trades.map((t) => ({
-      time: t.date,
-      value: t.totalInvested,
-    }));
-
     return {
       trades,
       chartData,
-      investedData,
       totalInvested: lastTrade.totalInvested,
       currentValue: lastTrade.portfolioValue,
       totalReturn,
       avgCostBasis,
       unitsAccumulated: lastTrade.totalUnits,
       currentPrice: trades[trades.length - 1].price,
-      bestBuyPrice: Math.min(...allPrices),
-      worstBuyPrice: Math.max(...allPrices),
+      bestBuyPrice: allPrices.length > 0 ? Math.min(...allPrices) : 0,
+      worstBuyPrice: allPrices.length > 0 ? Math.max(...allPrices) : 0,
       numBuys: trades.filter((t) => t.amount > 0).length,
+      firstDate: priceData[0].date,
+      lastDate: priceData[priceData.length - 1].date,
     };
-  }, [asset, amount, frequency, strategy, startDate, endDate]);
+  }, [priceData, amount, frequency, strategy, startDate]);
+
+  const selectedAsset = ASSETS.find((a) => a.id === asset);
 
   return (
     <div className="p-6 space-y-6">
+      {/* Title */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Calculator className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold">DCA Simulation</h1>
         </div>
         <p className="text-muted-foreground">
-          달러 비용 평균법(DCA) 시뮬레이션 - 자산, 금액, 주기, 전략별 비교 분석
+          실제 과거 가격 데이터 기반 달러 비용 평균법(DCA) 시뮬레이션
         </p>
+      </div>
+
+      {/* Usage Guide */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold hover:bg-muted/30"
+        >
+          <span className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-blue-500" />
+            사용법 안내
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${showGuide ? "rotate-180" : ""}`}
+          />
+        </button>
+        {showGuide && (
+          <div className="border-t border-border px-4 py-4 text-sm text-muted-foreground space-y-3">
+            <div>
+              <h4 className="font-semibold text-foreground mb-1">
+                1. 자산 선택
+              </h4>
+              <p>
+                BTC, ETH, SOL 등 18종의 암호화폐 중 시뮬레이션할 자산을
+                선택합니다. CoinGecko의 실제 과거 가격 데이터(일별)를
+                사용하며, 2013년부터 현재까지 전체 기간을 지원합니다.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-1">
+                2. 투자 설정
+              </h4>
+              <p>
+                <strong>회당 투자금:</strong> 매 투자 시점마다 투입할 금액(USD)을
+                입력합니다.
+                <br />
+                <strong>투자 주기:</strong> 매일 / 매주 / 격주 / 매월 중 선택합니다.
+                <br />
+                <strong>기간:</strong> 시작일과 종료일을 설정합니다. 자산별
+                데이터 제공 시작 연도에 유의하세요.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-1">
+                3. 투자 전략
+              </h4>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <strong>균등 투자:</strong> 매 주기마다 동일한 금액을 투자합니다
+                  (표준 DCA).
+                </li>
+                <li>
+                  <strong>일시불 투자:</strong> 전체 기간의 투자금을 시작 시점에
+                  한번에 투입합니다. DCA 대비 성과를 비교할 수 있습니다.
+                </li>
+                <li>
+                  <strong>동적 DCA:</strong> 현재 가격이 평균 매수가보다 낮으면 더
+                  많이(최대 2배), 높으면 줄여서(최소 0.5배) 투자합니다.
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-1">
+                4. 결과 확인
+              </h4>
+              <p>
+                총 투자금, 현재 가치, 수익률, 평균 매수가 등의 요약 지표와
+                포트폴리오 가치 추이 차트를 확인합니다. 하단의 &quot;거래
+                내역&quot;을 펼치면 개별 매수 기록을 볼 수 있습니다.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Strategy Tabs */}
@@ -283,7 +373,7 @@ export default function DCASimulationPage() {
           <button
             key={s.key}
             onClick={() => setStrategy(s.key)}
-            className={`rounded-md px-4 py-2 text-sm font-medium ${
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               strategy === s.key
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted"
@@ -312,11 +402,16 @@ export default function DCASimulationPage() {
                 </option>
               ))}
             </select>
+            {selectedAsset && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                데이터 제공: {selectedAsset.since}년 ~
+              </p>
+            )}
           </div>
 
           <div>
             <label className="text-sm font-medium">
-              {strategy === "lumpsum" ? "총 투자금 ($)" : "회당 투자금 ($)"}
+              {strategy === "lumpsum" ? "회당 기준 금액 ($)" : "회당 투자금 ($)"}
             </label>
             <div className="relative mt-1">
               <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -328,6 +423,21 @@ export default function DCASimulationPage() {
                 min="1"
               />
             </div>
+            {strategy === "lumpsum" && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                일시불 총액: $
+                {(
+                  (parseFloat(amount) || 0) *
+                  (frequency === "daily"
+                    ? 365
+                    : frequency === "weekly"
+                    ? 52
+                    : frequency === "biweekly"
+                    ? 26
+                    : 12)
+                ).toLocaleString()}
+              </p>
+            )}
           </div>
 
           <div>
@@ -373,15 +483,47 @@ export default function DCASimulationPage() {
 
           {strategy === "dynamic" && (
             <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-              동적 DCA: 평균 매수가 대비 현재가가 낮으면 더 많이 투자하고,
-              높으면 줄여서 투자합니다 (0.5x ~ 2x).
+              <strong>동적 DCA:</strong> 평균 매수가 대비 현재가가 낮으면 더 많이
+              투자하고, 높으면 줄여서 투자합니다 (0.5x ~ 2x).
+            </div>
+          )}
+
+          {/* Data status */}
+          {priceData && !loading && (
+            <div className="rounded-md bg-green-500/10 border border-green-500/20 p-3 text-xs text-green-600 dark:text-green-400">
+              {priceData.length}일간의 실제 가격 데이터 로드 완료
+              <br />
+              {priceData[0].date} ~ {priceData[priceData.length - 1].date}
+            </div>
+          )}
+          {notice && !loading && (
+            <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-600 dark:text-amber-400">
+              {notice}
             </div>
           )}
         </div>
 
         {/* Results */}
         <div className="lg:col-span-2 space-y-6">
-          {results ? (
+          {loading ? (
+            <div className="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
+              <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+              <p className="text-sm text-muted-foreground">
+                {asset} 과거 가격 데이터를 불러오는 중...
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                CoinGecko에서 실시간 조회
+              </p>
+            </div>
+          ) : dataError ? (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-12 flex flex-col items-center justify-center text-center">
+              <AlertTriangle className="h-10 w-10 text-red-500 mb-3" />
+              <p className="text-sm text-red-500 font-medium">{dataError}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                날짜 범위를 조정하거나 잠시 후 다시 시도해주세요.
+              </p>
+            </div>
+          ) : results ? (
             <>
               {/* Summary Cards */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -418,12 +560,26 @@ export default function DCASimulationPage() {
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
                   <p className="text-xs text-muted-foreground">매수 횟수</p>
-                  <p className="text-lg font-bold mt-1">{results.numBuys}회</p>
+                  <p className="text-lg font-bold mt-1">
+                    {results.numBuys}회
+                  </p>
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
                   <p className="text-xs text-muted-foreground">평균 매수가</p>
                   <p className="text-lg font-bold mt-1">
-                    ${results.avgCostBasis.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    $
+                    {results.avgCostBasis.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-xs text-muted-foreground">현재 가격</p>
+                  <p className="text-lg font-bold mt-1">
+                    $
+                    {results.currentPrice.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
@@ -431,20 +587,30 @@ export default function DCASimulationPage() {
                   <p className="text-lg font-bold mt-1">
                     {results.unitsAccumulated < 1
                       ? results.unitsAccumulated.toFixed(6)
-                      : results.unitsAccumulated.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                    {" "}{asset}
+                      : results.unitsAccumulated.toLocaleString(undefined, {
+                          maximumFractionDigits: 4,
+                        })}{" "}
+                    {asset}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
-                  <p className="text-xs text-muted-foreground">최저 매수가</p>
-                  <p className="text-lg font-bold mt-1 text-green-500">
-                    ${results.bestBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  <p className="text-xs text-muted-foreground">
+                    최저 / 최고 매수가
                   </p>
-                </div>
-                <div className="rounded-lg border border-border bg-card p-4">
-                  <p className="text-xs text-muted-foreground">최고 매수가</p>
-                  <p className="text-lg font-bold mt-1 text-red-500">
-                    ${results.worstBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  <p className="text-sm font-bold mt-1">
+                    <span className="text-green-500">
+                      $
+                      {results.bestBuyPrice.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                    {" / "}
+                    <span className="text-red-500">
+                      $
+                      {results.worstBuyPrice.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -475,7 +641,10 @@ export default function DCASimulationPage() {
                   onClick={() => setShowTradeHistory(!showTradeHistory)}
                   className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold hover:bg-muted/30"
                 >
-                  <span>거래 내역 ({results.trades.filter((t) => t.amount > 0).length}건)</span>
+                  <span>
+                    거래 내역 (
+                    {results.trades.filter((t) => t.amount > 0).length}건)
+                  </span>
                   <ChevronDown
                     className={`h-4 w-4 transition-transform ${showTradeHistory ? "rotate-180" : ""}`}
                   />
@@ -508,19 +677,25 @@ export default function DCASimulationPage() {
                       <tbody>
                         {results.trades
                           .filter((t) => t.amount > 0)
-                          .map((trade) => (
+                          .map((trade, idx) => (
                             <tr
-                              key={trade.date}
+                              key={`${trade.date}-${idx}`}
                               className="border-b border-border hover:bg-muted/20"
                             >
                               <td className="px-3 py-2 font-mono">
                                 {trade.date}
                               </td>
                               <td className="px-3 py-2 text-right font-mono">
-                                ${trade.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                $
+                                {trade.price.toLocaleString(undefined, {
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="px-3 py-2 text-right font-mono">
-                                ${trade.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                $
+                                {trade.amount.toLocaleString(undefined, {
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="px-3 py-2 text-right font-mono">
                                 {trade.units < 0.01
@@ -556,6 +731,44 @@ export default function DCASimulationPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Disclaimers */}
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-4 w-4" />
+          주의사항
+        </div>
+        <ul className="text-xs text-muted-foreground space-y-1.5 pl-6 list-disc">
+          <li>
+            <strong>과거 수익률은 미래 수익률을 보장하지 않습니다.</strong>{" "}
+            시뮬레이션 결과는 참고용이며, 실제 투자 성과와 다를 수 있습니다.
+          </li>
+          <li>
+            실제 거래에서는 <strong>거래 수수료, 스프레드, 슬리피지</strong> 등
+            추가 비용이 발생하며, 이 시뮬레이션에는 반영되지 않았습니다.
+          </li>
+          <li>
+            암호화폐는 <strong>극심한 가격 변동성</strong>을 가진 고위험
+            자산입니다. 투자 원금의 일부 또는 전부를 잃을 수 있습니다.
+          </li>
+          <li>
+            본 시뮬레이션은 <strong>투자 조언이 아닙니다.</strong> 투자 결정은
+            반드시 본인의 판단과 책임 하에 이루어져야 합니다.
+          </li>
+          <li>
+            가격 데이터 출처:{" "}
+            <a
+              href="https://www.coingecko.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              CoinGecko
+            </a>{" "}
+            (일별 종가 기준, 24시간 캐시)
+          </li>
+        </ul>
       </div>
     </div>
   );

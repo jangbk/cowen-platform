@@ -26,14 +26,11 @@ const PATH_LABELS: Record<string, string> = {
   "modern-portfolio-theory": "MPT",
   "portfolio-strategy-tester": "Strategy Tester",
   "weighted-risk": "Weighted Risk",
-  workbench: "Workbench",
   "metric-analyzer": "Metric Analyzer",
   "bot-performance": "Bot Performance",
   backtest: "Backtest",
-  studies: "Studies",
-  "premium-videos": "Premium Videos",
-  newsletter: "Newsletter",
-  "release-notes": "Release Notes",
+  studies: "Crypto News",
+  "premium-videos": "Crypto Channels",
   "video-summaries": "Video Summaries",
 };
 

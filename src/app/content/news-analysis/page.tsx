@@ -92,18 +92,15 @@ export default function NewsAnalysisPage() {
     setHydrated(true);
   }, []);
 
-  // Save to localStorage whenever analyses change
-  const saveAnalyses = useCallback(
-    (data: NewsAnalysis[]) => {
-      setAnalyses(data);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch {
-        /* storage full, ignore */
-      }
-    },
-    []
-  );
+  // Save to localStorage
+  const saveAnalyses = useCallback((data: NewsAnalysis[]) => {
+    setAnalyses(data);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      /* storage full, ignore */
+    }
+  }, []);
 
   const handleAnalyze = async () => {
     const isTextMode = activeTab === "text";
@@ -164,7 +161,13 @@ export default function NewsAnalysisPage() {
         tags: data.tags || [],
       };
 
-      saveAnalyses([newAnalysis, ...analyses]);
+      setAnalyses((prev) => {
+        const updated = [newAnalysis, ...prev];
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        } catch { /* storage full */ }
+        return updated;
+      });
       setExpandedId(newId);
 
       // Clear inputs
@@ -204,7 +207,13 @@ ${analysis.tags.join(", ")}`;
 
   const handleDelete = (id: string) => {
     if (!confirm("이 분석을 삭제하시겠습니까?")) return;
-    saveAnalyses(analyses.filter((a) => a.id !== id));
+    setAnalyses((prev) => {
+      const updated = prev.filter((a) => a.id !== id);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch { /* ignore */ }
+      return updated;
+    });
     if (expandedId === id) setExpandedId(null);
   };
 

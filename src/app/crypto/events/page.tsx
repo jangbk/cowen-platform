@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Calendar,
   Bell,
@@ -16,174 +16,37 @@ import {
   Globe,
   Coins,
   ArrowUpDown,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
-// Sample events data (will be replaced by CoinMarketCal API)
-const SAMPLE_EVENTS = [
-  {
-    id: 1,
-    title: "Bitcoin Halving Countdown",
-    coin: "BTC",
-    coinName: "Bitcoin",
-    date: "2026-03-15",
-    category: "Halving",
-    importance: "high" as const,
-    description:
-      "Bitcoin block reward halving event. Historically significant price catalyst.",
-    source: "CoinMarketCal",
-    confidence: 95,
-    notified: true,
-  },
-  {
-    id: 2,
-    title: "Ethereum Dencun Upgrade Phase 2",
-    coin: "ETH",
-    coinName: "Ethereum",
-    date: "2026-02-20",
-    category: "Hard Fork",
-    importance: "high" as const,
-    description:
-      "Major network upgrade improving L2 scalability and reducing gas fees.",
-    source: "CoinMarketCal",
-    confidence: 88,
-    notified: false,
-  },
-  {
-    id: 3,
-    title: "Solana Firedancer Mainnet Launch",
-    coin: "SOL",
-    coinName: "Solana",
-    date: "2026-02-10",
-    category: "Release",
-    importance: "high" as const,
-    description:
-      "Jump Crypto's independent validator client goes live on mainnet.",
-    source: "CoinMarketCal",
-    confidence: 82,
-    notified: true,
-  },
-  {
-    id: 4,
-    title: "XRP SEC Case Final Ruling",
-    coin: "XRP",
-    coinName: "XRP",
-    date: "2026-02-14",
-    category: "Regulation",
-    importance: "high" as const,
-    description: "Expected final ruling in the SEC vs Ripple case.",
-    source: "CoinMarketCal",
-    confidence: 70,
-    notified: false,
-  },
-  {
-    id: 5,
-    title: "Cardano Voltaire Governance Vote",
-    coin: "ADA",
-    coinName: "Cardano",
-    date: "2026-02-12",
-    category: "Governance",
-    importance: "medium" as const,
-    description:
-      "Community governance vote for treasury allocation proposals.",
-    source: "CoinMarketCal",
-    confidence: 90,
-    notified: false,
-  },
-  {
-    id: 6,
-    title: "Chainlink CCIP v2.0",
-    coin: "LINK",
-    coinName: "Chainlink",
-    date: "2026-02-18",
-    category: "Release",
-    importance: "medium" as const,
-    description:
-      "Cross-Chain Interoperability Protocol major upgrade with new features.",
-    source: "CoinMarketCal",
-    confidence: 85,
-    notified: false,
-  },
-  {
-    id: 7,
-    title: "Polygon zkEVM Type 1 Upgrade",
-    coin: "POL",
-    coinName: "Polygon",
-    date: "2026-02-25",
-    category: "Release",
-    importance: "medium" as const,
-    description: "Full EVM equivalence achieved for Polygon zkEVM.",
-    source: "CoinMarketCal",
-    confidence: 78,
-    notified: false,
-  },
-  {
-    id: 8,
-    title: "BUIDL Europe 2026 Conference",
-    coin: "CRYPTO",
-    coinName: "General",
-    date: "2026-03-01",
-    category: "Conference",
-    importance: "low" as const,
-    description:
-      "Two-day technical conference for builders and founders in Europe.",
-    source: "CoinMarketCal",
-    confidence: 100,
-    notified: false,
-  },
-  {
-    id: 9,
-    title: "Avalanche Subnet-EVM Upgrade",
-    coin: "AVAX",
-    coinName: "Avalanche",
-    date: "2026-02-28",
-    category: "Release",
-    importance: "medium" as const,
-    description: "Major upgrade to Subnet-EVM improving interoperability.",
-    source: "CoinMarketCal",
-    confidence: 75,
-    notified: false,
-  },
-  {
-    id: 10,
-    title: "BNB Chain Quarterly Token Burn",
-    coin: "BNB",
-    coinName: "BNB",
-    date: "2026-02-15",
-    category: "Token Burn",
-    importance: "medium" as const,
-    description: "Scheduled quarterly BNB token burn event.",
-    source: "CoinMarketCal",
-    confidence: 95,
-    notified: true,
-  },
-  {
-    id: 11,
-    title: "Tron USDD 2.0 Launch",
-    coin: "TRX",
-    coinName: "TRON",
-    date: "2026-03-05",
-    category: "Release",
-    importance: "medium" as const,
-    description:
-      "New version of USDD stablecoin with improved collateralization.",
-    source: "CoinMarketCal",
-    confidence: 72,
-    notified: false,
-  },
-  {
-    id: 12,
-    title: "US Crypto Regulation Bill Vote",
-    coin: "CRYPTO",
-    coinName: "General",
-    date: "2026-03-10",
-    category: "Regulation",
-    importance: "high" as const,
-    description:
-      "US Congress vote on comprehensive cryptocurrency regulation framework.",
-    source: "CoinMarketCal",
-    confidence: 65,
-    notified: true,
-  },
+interface CryptoEvent {
+  id: number;
+  title: string;
+  coin: string;
+  coinName: string;
+  date: string;
+  category: string;
+  importance: "high" | "medium" | "low";
+  description: string;
+  source: string;
+  confidence: number;
+  notified: boolean;
+}
+
+// Fallback events data (used when API is unavailable)
+const FALLBACK_EVENTS: CryptoEvent[] = [
+  { id: 1, title: "Bitcoin Halving Countdown", coin: "BTC", coinName: "Bitcoin", date: "2026-03-15", category: "Halving", importance: "high", description: "Bitcoin block reward halving event. Historically significant price catalyst.", source: "CoinMarketCal", confidence: 95, notified: true },
+  { id: 2, title: "Ethereum Dencun Upgrade Phase 2", coin: "ETH", coinName: "Ethereum", date: "2026-02-20", category: "Hard Fork", importance: "high", description: "Major network upgrade improving L2 scalability and reducing gas fees.", source: "CoinMarketCal", confidence: 88, notified: false },
+  { id: 3, title: "Solana Firedancer Mainnet Launch", coin: "SOL", coinName: "Solana", date: "2026-02-10", category: "Release", importance: "high", description: "Jump Crypto's independent validator client goes live on mainnet.", source: "CoinMarketCal", confidence: 82, notified: true },
+  { id: 4, title: "XRP SEC Case Final Ruling", coin: "XRP", coinName: "XRP", date: "2026-02-14", category: "Regulation", importance: "high", description: "Expected final ruling in the SEC vs Ripple case.", source: "CoinMarketCal", confidence: 70, notified: false },
+  { id: 5, title: "Cardano Voltaire Governance Vote", coin: "ADA", coinName: "Cardano", date: "2026-02-12", category: "Governance", importance: "medium", description: "Community governance vote for treasury allocation proposals.", source: "CoinMarketCal", confidence: 90, notified: false },
+  { id: 6, title: "Chainlink CCIP v2.0", coin: "LINK", coinName: "Chainlink", date: "2026-02-18", category: "Release", importance: "medium", description: "Cross-Chain Interoperability Protocol major upgrade.", source: "CoinMarketCal", confidence: 85, notified: false },
+  { id: 7, title: "Polygon zkEVM Type 1 Upgrade", coin: "POL", coinName: "Polygon", date: "2026-02-25", category: "Release", importance: "medium", description: "Full EVM equivalence achieved for Polygon zkEVM.", source: "CoinMarketCal", confidence: 78, notified: false },
+  { id: 8, title: "BUIDL Europe 2026 Conference", coin: "CRYPTO", coinName: "General", date: "2026-03-01", category: "Conference", importance: "low", description: "Two-day technical conference for builders and founders in Europe.", source: "CoinMarketCal", confidence: 100, notified: false },
+  { id: 9, title: "BNB Chain Quarterly Token Burn", coin: "BNB", coinName: "BNB", date: "2026-02-15", category: "Token Burn", importance: "medium", description: "Scheduled quarterly BNB token burn event.", source: "CoinMarketCal", confidence: 95, notified: true },
+  { id: 10, title: "US Crypto Regulation Bill Vote", coin: "CRYPTO", coinName: "General", date: "2026-03-10", category: "Regulation", importance: "high", description: "US Congress vote on comprehensive cryptocurrency regulation framework.", source: "CoinMarketCal", confidence: 65, notified: true },
 ];
 
 const CATEGORIES = [
@@ -293,15 +156,52 @@ export default function CryptoEventsPage() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedCoin, setSelectedCoin] = useState("All");
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [events, setEvents] = useState<CryptoEvent[]>(FALLBACK_EVENTS);
+  const [dataSource, setDataSource] = useState<string>("loading");
+  const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Record<number, boolean>>(
     Object.fromEntries(
-      SAMPLE_EVENTS.filter((e) => e.notified).map((e) => [e.id, true])
+      FALLBACK_EVENTS.filter((e) => e.notified).map((e) => [e.id, true])
     )
   );
   const [alertDays, setAlertDays] = useState(3);
   const [showAlertSettings, setShowAlertSettings] = useState(false);
 
-  const filteredEvents = SAMPLE_EVENTS.filter((event) => {
+  useEffect(() => {
+    async function fetchEvents() {
+      try {
+        const res = await fetch("/api/crypto/events");
+        if (!res.ok) throw new Error("API error");
+        const json = await res.json();
+        if (json.data && json.data.length > 0) {
+          const mapped: CryptoEvent[] = json.data.map((e: { id: number; title: string; coin: string; coinName: string; date: string; category: string; importance: string; description: string; confidence: number; source?: string }) => ({
+            id: e.id,
+            title: e.title,
+            coin: e.coin,
+            coinName: e.coinName,
+            date: e.date,
+            category: e.category,
+            importance: e.importance as "high" | "medium" | "low",
+            description: e.description || "",
+            source: e.source || "CoinMarketCal",
+            confidence: e.confidence || 50,
+            notified: false,
+          }));
+          setEvents(mapped);
+          setDataSource(json.source === "coinmarketcal" ? "CoinMarketCal (실시간)" : "sample");
+        } else {
+          setDataSource("fallback");
+        }
+      } catch {
+        setDataSource("fallback");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchEvents();
+  }, []);
+
+  const filteredEvents = events.filter((event) => {
     if (selectedCategory !== "All" && event.category !== selectedCategory)
       return false;
     if (selectedCoin !== "All" && event.coin !== selectedCoin) return false;
@@ -348,6 +248,21 @@ export default function CryptoEventsPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             주요 암호화폐 이벤트 일정 및 알림 (CoinMarketCal 기반)
           </p>
+          <div className="mt-1.5">
+            {isLoading ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <RefreshCw className="h-3 w-3 animate-spin" /> 데이터 로딩 중...
+              </span>
+            ) : dataSource.includes("실시간") ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
+                <Wifi className="h-3 w-3" /> {dataSource}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                <WifiOff className="h-3 w-3" /> 샘플 데이터 (API 키 설정 시 실시간 연결)
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {upcomingCount > 0 && (
@@ -652,8 +567,7 @@ export default function CryptoEventsPage() {
       {/* Source Attribution */}
       <div className="mt-6 flex items-center justify-between text-xs text-muted-foreground">
         <span>
-          Data source: CoinMarketCal API | 총 {filteredEvents.length}개
-          이벤트
+          Data source: {dataSource} | 총 {filteredEvents.length}개 이벤트
         </span>
         <a
           href="https://coinmarketcal.com"

@@ -11,18 +11,18 @@ import type { NavItem } from "@/lib/types";
 
 function Logo() {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2 shrink-0" aria-label="BK Cryptoverse 홈">
-      <div className="relative h-10 w-10">
+    <Link href="/dashboard" className="flex items-center gap-2 shrink-0" aria-label="BK INVESTMENT 홈">
+      <div className="relative h-10 w-10 rounded-lg overflow-hidden bg-[#f7931a] flex items-center justify-center shadow-md">
         <svg viewBox="0 0 40 40" className="h-10 w-10" aria-hidden="true">
-          <circle cx="20" cy="20" r="19" fill="#f7931a" />
-          <text x="20" y="27" textAnchor="middle" fontSize="22" fontWeight="bold" fill="#fff" fontFamily="Arial, sans-serif">₿</text>
+          <rect width="40" height="40" rx="8" fill="#f7931a" />
+          <text x="20" y="30" textAnchor="middle" fontSize="30" fontWeight="bold" fill="#fff" fontFamily="Arial, sans-serif">₿</text>
         </svg>
       </div>
       <span className="hidden leading-tight sm:block font-[var(--font-orbitron)]">
-        <span className="text-base font-black text-primary tracking-tight">BK</span>
+        <span className="text-xl font-black text-primary tracking-tight">BK</span>
         <br />
-        <span className="text-[10px] font-bold text-foreground tracking-widest">
-          CRYPTOVERSE
+        <span className="text-xs font-bold text-foreground tracking-widest">
+          INVESTMENT
         </span>
       </span>
     </Link>

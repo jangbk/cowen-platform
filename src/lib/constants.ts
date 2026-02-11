@@ -1,6 +1,6 @@
 import { type NavItem } from "./types";
 
-export const SITE_NAME = "BK Cryptoverse";
+export const SITE_NAME = "BK INVESTMENT";
 export const SITE_DESCRIPTION = "Investment Analysis Platform";
 
 export const NAV_ITEMS: NavItem[] = [
@@ -49,7 +49,6 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/tools/portfolio-strategy-tester",
       },
       { label: "Weighted Risk", href: "/tools/weighted-risk" },
-      { label: "Workbench", href: "/tools/workbench" },
       { label: "Metric Analyzer", href: "/tools/metric-analyzer" },
       { label: "Bot Performance", href: "/tools/bot-performance" },
       { label: "Backtest", href: "/tools/backtest" },
@@ -61,10 +60,8 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: "News Analysis", href: "/content/news-analysis" },
       { label: "Video Summaries", href: "/content/video-summaries" },
-      { label: "Studies", href: "/content/studies" },
-      { label: "Premium Videos", href: "/content/premium-videos" },
-      { label: "Newsletter", href: "/content/newsletter" },
-      { label: "Release Notes", href: "/content/release-notes" },
+      { label: "Crypto News", href: "/content/studies" },
+      { label: "Crypto Channels", href: "/content/premium-videos" },
     ],
   },
 ];

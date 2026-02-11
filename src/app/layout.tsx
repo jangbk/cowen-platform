@@ -36,8 +36,8 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "BK Cryptoverse - Investment Analysis Platform",
-    template: "%s | BK Cryptoverse",
+    default: "BK INVESTMENT - Investment Analysis Platform",
+    template: "%s | BK INVESTMENT",
   },
   description:
     "Comprehensive investment analysis platform covering crypto, macro economics, traditional finance, and quantitative tools.",
@@ -51,12 +51,12 @@ export const metadata: Metadata = {
     "macro",
     "on-chain",
   ],
-  authors: [{ name: "BK Cryptoverse" }],
+  authors: [{ name: "BK INVESTMENT" }],
   openGraph: {
     type: "website",
     locale: "ko_KR",
-    siteName: "BK Cryptoverse",
-    title: "BK Cryptoverse - Investment Analysis Platform",
+    siteName: "BK INVESTMENT",
+    title: "BK INVESTMENT - Investment Analysis Platform",
     description:
       "크립토, 매크로, 전통 금융을 아우르는 종합 투자 분석 플랫폼",
   },

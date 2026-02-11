@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Bot,
   TrendingUp,
@@ -8,52 +8,56 @@ import {
   Activity,
   DollarSign,
   BarChart3,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
   Zap,
   Target,
   Shield,
-  RefreshCw,
+  Wifi,
+  WifiOff,
+  Loader2,
 } from "lucide-react";
 
-const BOT_STRATEGIES = [
+interface BotStrategy {
+  id: string;
+  name: string;
+  description: string;
+  asset: string;
+  exchange: string;
+  status: "active" | "paused" | "stopped";
+  startDate: string;
+  initialCapital: number;
+  currentValue: number;
+  totalReturn: number;
+  monthlyReturn: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  winRate: number;
+  totalTrades: number;
+  profitTrades: number;
+  lossTrades: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number;
+  dailyPnL: number[];
+  monthlyReturns: number[];
+  recentTrades?: Array<{
+    time: string;
+    type: string;
+    price: string;
+    qty: string;
+    pnl: string;
+  }>;
+  _live?: boolean;
+}
+
+const FALLBACK_STRATEGIES: BotStrategy[] = [
   {
-    id: "larry-williams",
-    name: "Larry Williams Strategy",
-    description: "래리 윌리엄스 변동성 돌파 전략",
+    id: "seykota-ema",
+    name: "Seykota EMA Bot",
+    description: "EMA 15/150 추세추종 전략",
     asset: "BTC/KRW",
     exchange: "Bithumb",
-    status: "active" as const,
+    status: "active",
     startDate: "2025-06-01",
-    initialCapital: 10000000,
-    currentValue: 14850000,
-    totalReturn: 48.5,
-    monthlyReturn: 4.2,
-    maxDrawdown: -12.3,
-    sharpeRatio: 1.85,
-    winRate: 62.5,
-    totalTrades: 245,
-    profitTrades: 153,
-    lossTrades: 92,
-    avgWin: 3.2,
-    avgLoss: -1.8,
-    profitFactor: 2.1,
-    dailyPnL: [
-      2.1, -0.5, 1.8, -1.2, 3.1, 0.5, -0.8, 2.4, 1.1, -0.3, 1.9, -0.7,
-      2.8, 0.3, -1.5, 1.6, 2.2, -0.4, 1.3, -0.9, 2.5, 1.7, -0.6, 3.0,
-      -1.1, 0.8, 2.0, 1.4, -0.2, 1.5,
-    ],
-    monthlyReturns: [5.2, 3.8, -2.1, 6.5, 4.1, 3.2, -1.5, 7.8, 5.5, 2.9, 4.3, 8.8],
-  },
-  {
-    id: "seykota",
-    name: "Seykota Trend Following",
-    description: "에드 세이코타 추세추종 전략",
-    asset: "BTC/KRW",
-    exchange: "Bithumb",
-    status: "active" as const,
-    startDate: "2025-07-15",
     initialCapital: 5000000,
     currentValue: 6920000,
     totalReturn: 38.4,
@@ -69,18 +73,26 @@ const BOT_STRATEGIES = [
     profitFactor: 1.95,
     dailyPnL: [
       -0.3, 1.5, 2.8, -1.0, 0.2, 3.5, -2.1, 1.8, -0.5, 4.2, 1.0, -1.8,
-      0.7, 2.3, -0.8, 1.2, 3.0, -1.5, 2.1, -0.4, 1.6, 0.9, -2.5, 3.8,
-      1.3, -0.7, 2.5, -1.2, 0.5, 1.8,
+      0.7, 2.3, -0.8, 1.2, 3.0, -1.5, 2.1, -0.4, 1.6, 0.9, -2.5, 3.8, 1.3,
+      -0.7, 2.5, -1.2, 0.5, 1.8,
     ],
-    monthlyReturns: [4.1, -3.2, 7.5, 2.8, -1.2, 5.5, 8.2, 3.1, -2.5, 6.3, 4.8, 2.9],
+    monthlyReturns: [
+      4.1, -3.2, 7.5, 2.8, -1.2, 5.5, 8.2, 3.1, -2.5, 6.3, 4.8, 2.9,
+    ],
+    recentTrades: [
+      { time: "2026-02-06 22:15", type: "Sell", price: "97,250,000", qty: "0.015000", pnl: "+125,000" },
+      { time: "2026-02-06 18:30", type: "Buy", price: "96,800,000", qty: "0.015000", pnl: "-" },
+      { time: "2026-02-06 14:45", type: "Sell", price: "97,100,000", qty: "0.012000", pnl: "+89,000" },
+      { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012000", pnl: "-" },
+    ],
   },
   {
-    id: "ptj-momentum",
-    name: "PTJ Momentum Bot",
-    description: "폴 튜더 존스 모멘텀 전략",
+    id: "ptj-200ma",
+    name: "PTJ 200MA Bot",
+    description: "200MA + 50MA 모멘텀 전략",
     asset: "BTC/KRW",
     exchange: "Coinone",
-    status: "active" as const,
+    status: "active",
     startDate: "2025-09-01",
     initialCapital: 8000000,
     currentValue: 9680000,
@@ -96,19 +108,27 @@ const BOT_STRATEGIES = [
     avgLoss: -1.5,
     profitFactor: 1.75,
     dailyPnL: [
-      1.2, 0.8, -0.5, 1.5, -0.3, 2.0, 1.1, -1.0, 0.6, 1.8, -0.7, 1.3,
-      0.4, -0.2, 2.2, 1.0, -0.8, 1.6, 0.9, -0.4, 1.4, 2.1, -0.6, 0.7,
-      1.5, -0.3, 1.1, 0.5, 1.9, -0.5,
+      1.2, 0.8, -0.5, 1.5, -0.3, 2.0, 1.1, -1.0, 0.6, 1.8, -0.7, 1.3, 0.4,
+      -0.2, 2.2, 1.0, -0.8, 1.6, 0.9, -0.4, 1.4, 2.1, -0.6, 0.7, 1.5, -0.3,
+      1.1, 0.5, 1.9, -0.5,
     ],
-    monthlyReturns: [3.2, 2.1, -0.8, 4.5, 1.8, 2.5, -1.2, 3.8, 2.9, 1.5, -0.5, 1.2],
+    monthlyReturns: [
+      3.2, 2.1, -0.8, 4.5, 1.8, 2.5, -1.2, 3.8, 2.9, 1.5, -0.5, 1.2,
+    ],
+    recentTrades: [
+      { time: "2026-02-06 20:30", type: "Sell", price: "97,500,000", qty: "0.010000", pnl: "+95,000" },
+      { time: "2026-02-06 15:10", type: "Buy", price: "96,900,000", qty: "0.010000", pnl: "-" },
+      { time: "2026-02-05 23:45", type: "Sell", price: "98,200,000", qty: "0.008000", pnl: "-32,000" },
+      { time: "2026-02-05 19:20", type: "Buy", price: "98,600,000", qty: "0.008000", pnl: "-" },
+    ],
   },
   {
-    id: "kis-auto",
-    name: "KIS Auto Trader",
-    description: "한국투자증권 자동매매 (주식)",
-    asset: "KOSPI ETF",
+    id: "kis-rsi-macd",
+    name: "KIS RSI/MACD Bot",
+    description: "RSI 14 + MACD 12/26/9 전략",
+    asset: "삼성전자, SK하이닉스, NAVER, 카카오, LG화학",
     exchange: "한국투자증권",
-    status: "paused" as const,
+    status: "active",
     startDate: "2025-04-01",
     initialCapital: 20000000,
     currentValue: 22100000,
@@ -125,10 +145,18 @@ const BOT_STRATEGIES = [
     profitFactor: 1.45,
     dailyPnL: [
       0.5, -0.3, 0.8, 0.2, -0.6, 1.0, 0.4, -0.2, 0.7, -0.5, 0.3, 0.9,
-      -0.4, 0.6, 0.1, -0.3, 0.8, 0.5, -0.1, 0.4, -0.7, 0.6, 0.3, -0.2,
-      0.5, 0.8, -0.4, 0.3, 0.6, -0.1,
+      -0.4, 0.6, 0.1, -0.3, 0.8, 0.5, -0.1, 0.4, -0.7, 0.6, 0.3, -0.2, 0.5,
+      0.8, -0.4, 0.3, 0.6, -0.1,
     ],
-    monthlyReturns: [1.5, 0.8, -0.5, 2.1, 1.2, 0.9, -0.3, 1.8, 1.5, 0.6, -0.2, 1.1],
+    monthlyReturns: [
+      1.5, 0.8, -0.5, 2.1, 1.2, 0.9, -0.3, 1.8, 1.5, 0.6, -0.2, 1.1,
+    ],
+    recentTrades: [
+      { time: "2026-02-06 14:50", type: "Sell", price: "58,200", qty: "10", pnl: "+15,000" },
+      { time: "2026-02-06 10:05", type: "Buy", price: "56,700", qty: "10", pnl: "-" },
+      { time: "2026-02-05 15:20", type: "Sell", price: "198,500", qty: "3", pnl: "+4,500" },
+      { time: "2026-02-05 09:30", type: "Buy", price: "197,000", qty: "3", pnl: "-" },
+    ],
   },
 ];
 
@@ -156,15 +184,61 @@ function getStatusBadge(status: string) {
 }
 
 export default function BotPerformancePage() {
-  const [selectedBot, setSelectedBot] = useState(BOT_STRATEGIES[0].id);
-  const bot = BOT_STRATEGIES.find((b) => b.id === selectedBot)!;
+  const [strategies, setStrategies] = useState<BotStrategy[]>(FALLBACK_STRATEGIES);
+  const [selectedBot, setSelectedBot] = useState(FALLBACK_STRATEGIES[0].id);
+  const [isLive, setIsLive] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchBotData() {
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/bots/summary");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        const live = data.strategies as BotStrategy[];
+        if (live && live.length > 0) {
+          setStrategies(live);
+          setIsLive(live.some((s: BotStrategy & { _live?: boolean }) => s._live));
+          setLastUpdated(data.timestamp);
+          // Keep selectedBot if it exists in new data, otherwise select first
+          if (!live.find((s: BotStrategy) => s.id === selectedBot)) {
+            setSelectedBot(live[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch bot data, using fallback:", err);
+        if (!cancelled) {
+          setStrategies(FALLBACK_STRATEGIES);
+          setIsLive(false);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    fetchBotData();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchBotData, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const bot = strategies.find((b) => b.id === selectedBot) ?? strategies[0];
 
   // Calculate aggregated stats
-  const totalInvested = BOT_STRATEGIES.reduce(
+  const totalInvested = strategies.reduce(
     (sum, b) => sum + b.initialCapital,
     0
   );
-  const totalCurrent = BOT_STRATEGIES.reduce(
+  const totalCurrent = strategies.reduce(
     (sum, b) => sum + b.currentValue,
     0
   );
@@ -183,6 +257,14 @@ export default function BotPerformancePage() {
   const maxEquity = Math.max(...equityCurve);
   const minEquity = Math.min(...equityCurve);
 
+  // Recent trades: use API data if available, fallback to demo
+  const recentTrades = bot.recentTrades ?? [
+    { time: "2026-02-06 22:15", type: "Sell", price: "97,250,000", qty: "0.015", pnl: "+125,000" },
+    { time: "2026-02-06 18:30", type: "Buy", price: "96,800,000", qty: "0.015", pnl: "-" },
+    { time: "2026-02-06 14:45", type: "Sell", price: "97,100,000", qty: "0.012", pnl: "+89,000" },
+    { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012", pnl: "-" },
+  ];
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -194,6 +276,29 @@ export default function BotPerformancePage() {
         <p className="mt-1 text-sm text-muted-foreground">
           운영 중인 자동매매 프로그램의 실시간 성과를 모니터링합니다.
         </p>
+        <div className="mt-1.5 flex items-center gap-2">
+          {isLoading ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 w-fit">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              데이터 로딩 중...
+            </span>
+          ) : isLive ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 w-fit">
+              <Wifi className="h-3 w-3" />
+              실시간 데이터 연결됨
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400 w-fit">
+              <WifiOff className="h-3 w-3" />
+              데모 데이터 (API 키 미설정)
+            </span>
+          )}
+          {lastUpdated && !isLoading && (
+            <span className="text-xs text-muted-foreground">
+              {new Date(lastUpdated).toLocaleTimeString("ko-KR")} 업데이트
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Aggregate Stats */}
@@ -242,7 +347,7 @@ export default function BotPerformancePage() {
 
       {/* Bot Selection Tabs */}
       <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
-        {BOT_STRATEGIES.map((b) => (
+        {strategies.map((b) => (
           <button
             key={b.id}
             onClick={() => setSelectedBot(b.id)}
@@ -255,6 +360,9 @@ export default function BotPerformancePage() {
             <div className="flex items-center gap-2">
               <span>{b.name}</span>
               {getStatusBadge(b.status)}
+              {(b as BotStrategy & { _live?: boolean })._live && (
+                <Wifi className="h-3 w-3 text-emerald-500" />
+              )}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {b.asset} | {b.exchange}
@@ -411,14 +519,7 @@ export default function BotPerformancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { time: "2026-02-06 22:15", type: "Sell", price: "97,250,000", qty: "0.015", pnl: "+125,000" },
-                    { time: "2026-02-06 18:30", type: "Buy", price: "96,800,000", qty: "0.015", pnl: "-" },
-                    { time: "2026-02-06 14:45", type: "Sell", price: "97,100,000", qty: "0.012", pnl: "+89,000" },
-                    { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012", pnl: "-" },
-                    { time: "2026-02-05 23:10", type: "Sell", price: "98,500,000", qty: "0.02", pnl: "-42,000" },
-                    { time: "2026-02-05 20:30", type: "Buy", price: "98,710,000", qty: "0.02", pnl: "-" },
-                  ].map((trade, i) => (
+                  {recentTrades.map((trade, i) => (
                     <tr
                       key={i}
                       className="border-b border-border/50 hover:bg-muted/30"
@@ -462,14 +563,14 @@ export default function BotPerformancePage() {
                 {
                   icon: <TrendingUp className="h-4 w-4 text-positive" />,
                   label: "총 수익률",
-                  value: `+${bot.totalReturn}%`,
-                  color: "text-positive",
+                  value: `${bot.totalReturn >= 0 ? "+" : ""}${bot.totalReturn}%`,
+                  color: bot.totalReturn >= 0 ? "text-positive" : "text-negative",
                 },
                 {
                   icon: <Activity className="h-4 w-4 text-primary" />,
                   label: "월평균 수익률",
-                  value: `+${bot.monthlyReturn}%`,
-                  color: "text-positive",
+                  value: `${bot.monthlyReturn >= 0 ? "+" : ""}${bot.monthlyReturn}%`,
+                  color: bot.monthlyReturn >= 0 ? "text-positive" : "text-negative",
                 },
                 {
                   icon: <TrendingDown className="h-4 w-4 text-negative" />,
@@ -536,7 +637,7 @@ export default function BotPerformancePage() {
                 <div
                   className="h-full bg-positive rounded-full"
                   style={{
-                    width: `${(bot.profitTrades / bot.totalTrades) * 100}%`,
+                    width: `${bot.totalTrades > 0 ? (bot.profitTrades / bot.totalTrades) * 100 : 0}%`,
                   }}
                 />
               </div>
@@ -583,7 +684,9 @@ export default function BotPerformancePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">현재 평가</span>
-                <span className="font-bold text-positive">
+                <span
+                  className={`font-bold ${bot.currentValue >= bot.initialCapital ? "text-positive" : "text-negative"}`}
+                >
                   {(bot.currentValue / 10000).toLocaleString()}만원
                 </span>
               </div>

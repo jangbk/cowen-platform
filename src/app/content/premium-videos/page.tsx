@@ -2,255 +2,375 @@
 
 import { useState, useMemo } from "react";
 import {
-  Play,
-  Clock,
-  Lock,
-  Crown,
+  Youtube,
   Search,
-  Eye,
-  X,
-  Calendar,
-  ThumbsUp,
-  ChevronDown,
+  ExternalLink,
+  Users,
+  Globe,
+  Flag,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
-interface Video {
-  id: string;
-  youtubeId: string;
-  title: string;
+interface Channel {
+  name: string;
+  handle: string;
+  url: string;
   description: string;
-  duration: string;
-  date: string;
-  category: string;
-  premium: boolean;
-  views: number;
-  likes: number;
+  tags: string[];
+  region: "international" | "korean";
 }
 
-const VIDEOS: Video[] = [
+const CHANNELS: Channel[] = [
+  // ── 해외 ──────────────────────────────────────────────────────────────
   {
-    id: "v1",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Weekly Market Update: Bitcoin Breaks $98K",
+    name: "Into The Cryptoverse",
+    handle: "@intothecryptoverse",
+    url: "https://www.youtube.com/@intothecryptoverse",
     description:
-      "BTC, ETH, 주요 알트코인, 핵심 온체인 메트릭을 다루는 주간 종합 분석입니다. 다음 주 주요 이벤트와 가격 전망을 포함합니다.",
-    duration: "42:18",
-    date: "2026-02-06",
-    category: "주간 리뷰",
-    premium: true,
-    views: 2400,
-    likes: 312,
+      "Benjamin Cowen이 운영. 비트코인 사이클 분석, 온체인 메트릭, 리스크 모델 등 데이터 중심의 장기 투자 관점을 제공.",
+    tags: ["Bitcoin", "On-Chain", "Cycles"],
+    region: "international",
   },
   {
-    id: "v2",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "On-Chain Deep Dive: Exchange Outflows Accelerate",
+    name: "Coin Bureau",
+    handle: "@CoinBureau",
+    url: "https://www.youtube.com/@CoinBureau",
     description:
-      "최신 거래소 잔고 데이터를 분석하고, BTC 대규모 유출이 단기 가격에 미치는 신호를 해석합니다.",
-    duration: "28:45",
-    date: "2026-02-04",
-    category: "온체인 분석",
-    premium: true,
-    views: 1800,
-    likes: 245,
+      "Guy Turner가 운영. 크립토 프로젝트 심층 리뷰, 거래소 비교, 규제 뉴스 분석 등 교육 중심 콘텐츠.",
+    tags: ["Education", "Reviews", "News"],
+    region: "international",
   },
   {
-    id: "v3",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Macro Monday: Fed Meeting Preview",
+    name: "Real Vision",
+    handle: "@RealVisionFinance",
+    url: "https://www.youtube.com/@RealVisionFinance",
     description:
-      "FOMC 회의 전망, 인플레이션 데이터, 위험 자산에 대한 영향을 분석합니다.",
-    duration: "35:12",
-    date: "2026-02-03",
-    category: "매크로",
-    premium: false,
-    views: 3100,
-    likes: 428,
+      "Raoul Pal이 설립. 매크로 경제, 기관 투자, 크립토와 전통 금융의 교차점을 다루는 프리미엄 인터뷰 채널.",
+    tags: ["Macro", "Institutional", "Interviews"],
+    region: "international",
   },
   {
-    id: "v4",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Portfolio Strategy: Building a Risk-Adjusted Crypto Portfolio",
+    name: "Altcoin Daily",
+    handle: "@AltcoinDaily",
+    url: "https://www.youtube.com/@AltcoinDaily",
     description:
-      "현대 포트폴리오 이론을 크립토 자산에 적용하여 리스크 조정 포트폴리오를 구축하는 단계별 가이드입니다.",
-    duration: "52:30",
-    date: "2026-01-30",
-    category: "전략",
-    premium: true,
-    views: 4200,
-    likes: 567,
+      "Aaron & Austin Arnold 형제가 운영. 일일 크립토 뉴스, 알트코인 분석, 시장 전망을 빠르게 전달.",
+    tags: ["Altcoins", "Daily News", "Market"],
+    region: "international",
   },
   {
-    id: "v5",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Technical Analysis Masterclass: Support & Resistance",
+    name: "DataDash",
+    handle: "@DataDash",
+    url: "https://www.youtube.com/@DataDash",
     description:
-      "여러 기법과 타임프레임 분석을 활용한 핵심 지지/저항 레벨 식별법을 학습합니다.",
-    duration: "1:04:22",
-    date: "2026-01-27",
-    category: "교육",
-    premium: true,
-    views: 5800,
-    likes: 892,
+      "Nicholas Merten이 운영. 차트 기술적 분석, 매크로 환경, DeFi 트렌드에 대한 객관적 시각.",
+    tags: ["Technical Analysis", "Macro", "DeFi"],
+    region: "international",
   },
   {
-    id: "v6",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Altcoin Spotlight: Solana Ecosystem Analysis",
+    name: "Anthony Pompliano",
+    handle: "@AnthonyPompliano",
+    url: "https://www.youtube.com/@AnthonyPompliano",
     description:
-      "솔라나 생태계, DeFi 프로토콜, SOL 토크노믹스 분석과 투자 논제를 제시합니다.",
-    duration: "38:15",
-    date: "2026-01-24",
-    category: "알트코인",
-    premium: false,
-    views: 2900,
-    likes: 345,
+      "비트코인 낙관론자. 기관 채택, 비트코인 경제학, 창업/벤처 투자 인사이트를 공유.",
+    tags: ["Bitcoin", "Institutional", "Venture"],
+    region: "international",
   },
   {
-    id: "v7",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Bitcoin vs Gold: The Digital Gold Narrative in 2026",
+    name: "The Crypto Lark",
+    handle: "@TheCryptoLark",
+    url: "https://www.youtube.com/@TheCryptoLark",
     description:
-      "비트코인과 금의 상관관계 변화, 인플레이션 헤지 자산으로서의 역할을 분석합니다.",
-    duration: "31:42",
-    date: "2026-01-20",
-    category: "매크로",
-    premium: false,
-    views: 3400,
-    likes: 456,
+      "Lark Davis가 운영. 알트코인 발굴, DeFi 투자 전략, NFT/메타버스 트렌드 분석.",
+    tags: ["Altcoins", "DeFi", "NFT"],
+    region: "international",
   },
   {
-    id: "v8",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "DeFi Yield Farming: Sustainable Strategies",
+    name: "Crypto Banter",
+    handle: "@CryptoBanterGroup",
+    url: "https://www.youtube.com/@CryptoBanterGroup",
     description:
-      "지속 가능한 DeFi 일드 전략과 위험 관리 방법을 소개합니다. 실제 프로토콜 예시와 함께 설명합니다.",
-    duration: "45:08",
-    date: "2026-01-17",
-    category: "교육",
-    premium: true,
-    views: 2100,
-    likes: 289,
+      "Ran Neuner가 진행. 실시간 시장 분석 라이브, 트레이딩 전략, 게스트 인터뷰 중심 방송.",
+    tags: ["Live Trading", "Market", "Interviews"],
+    region: "international",
   },
   {
-    id: "v9",
-    youtubeId: "dQw4w9WgXcQ",
-    title: "Ethereum L2 Wars: Arbitrum vs Optimism vs Base",
+    name: "InvestAnswers",
+    handle: "@InvestAnswers",
+    url: "https://www.youtube.com/@InvestAnswers",
     description:
-      "이더리움 L2 경쟁 구도를 TVL, 트랜잭션 수, 개발자 활동, 토큰 가치 측면에서 비교합니다.",
-    duration: "40:55",
-    date: "2026-01-13",
-    category: "알트코인",
-    premium: true,
-    views: 3700,
-    likes: 501,
+      "James가 운영. 정량적 모델 기반 가격 예측, 포트폴리오 전략, 비트코인/이더리움 밸류에이션.",
+    tags: ["Quantitative", "Bitcoin", "Ethereum"],
+    region: "international",
+  },
+  {
+    name: "Digital Asset News",
+    handle: "@DigitalAssetNews",
+    url: "https://www.youtube.com/@DigitalAssetNews",
+    description:
+      "Rob이 운영. ETF 자금 유입, 규제 동향, 기관 투자 뉴스를 정리해서 전달하는 데일리 뉴스 채널.",
+    tags: ["ETF", "Regulation", "News"],
+    region: "international",
+  },
+
+  // ── 국내 ──────────────────────────────────────────────────────────────
+  {
+    name: "박작가의 크립토연구소",
+    handle: "@박작가의크립토연구소",
+    url: "https://www.youtube.com/channel/UCqaXPyhWGtS_Vt20GQQDSbg",
+    description:
+      "박종한 작가 운영. 크립토 시장 심층 리서치, 비트코인 사이클 분석, 알트코인 펀더멘탈, 투자 전략 가이드.",
+    tags: ["리서치", "사이클", "전략"],
+    region: "korean",
+  },
+  {
+    name: "미그놀렛 크립토",
+    handle: "@MignoletCrypto",
+    url: "https://www.youtube.com/@MignoletCrypto",
+    description:
+      "차트, 온체인, 시장 데이터를 종합 분석하는 트레이더. CryptoQuant 공식 애널리스트, 코인니스 칼럼니스트.",
+    tags: ["트레이딩", "차트분석", "온체인"],
+    region: "korean",
+  },
+  {
+    name: "비트슈아",
+    handle: "@bitshua",
+    url: "https://www.youtube.com/channel/UCf64J3dPdVRT6OJf57m-uyw",
+    description:
+      "미국 뉴스 기반 비트코인·알트코인·블록체인 투자 분석. 전략적 투자와 시장 흐름 파악에 초점.",
+    tags: ["Bitcoin", "미국뉴스", "매크로"],
+    region: "korean",
+  },
+  {
+    name: "코인이슈 경제채널",
+    handle: "@코인이슈경제채널",
+    url: "https://www.youtube.com/channel/UCvhsQm_E8wx2t5haDnCejMg",
+    description:
+      "박은성 운영. 글로벌 뉴스 기반 객관적 크립토 시황, 월·수·금 저녁 9시 정기 라이브 방송.",
+    tags: ["뉴스", "라이브", "시황"],
+    region: "korean",
+  },
+  {
+    name: "토미의 트레이딩TV",
+    handle: "@TommyTradingTV",
+    url: "https://www.youtube.com/@TommyTradingTV",
+    description:
+      "전업 트레이더 토미 운영. 비트코인 차트 분석, 매매 전략, 시장 관점, 차트 교육 전문 채널.",
+    tags: ["트레이딩", "차트분석", "실전매매"],
+    region: "korean",
+  },
+  {
+    name: "킬리만 학파",
+    handle: "@Kiliman",
+    url: "https://www.youtube.com/@Kiliman",
+    description:
+      "암호화폐 개인투자자의 학습 기록 공유. 기술적 분석, 패턴 분석, 보조지표 활용법 교육.",
+    tags: ["기술적분석", "패턴", "교육"],
+    region: "korean",
+  },
+  {
+    name: "비트코인 일루미나티",
+    handle: "@비트코인일루미나티",
+    url: "https://www.youtube.com/channel/UC3vBufn2MqRFyHk297at70w",
+    description:
+      "금융 권력의 숨겨진 흐름을 추적. 자본세력 동향, 거시경제 배경 분석, 비트코인 장기 사이클 해석.",
+    tags: ["Bitcoin", "사이클", "거시분석"],
+    region: "korean",
+  },
+  {
+    name: "크립토퀀트",
+    handle: "@CryptoQuant",
+    url: "https://www.youtube.com/@CryptoQuant",
+    description:
+      "주기영 대표의 온체인 데이터 분석 플랫폼. 비트코인 온체인 지표, 거래소 흐름, 고래 동향 분석.",
+    tags: ["온체인", "데이터", "Bitcoin"],
+    region: "korean",
+  },
+  {
+    name: "슈콘 (코인읽어주는남자)",
+    handle: "@슈콘",
+    url: "https://www.youtube.com/channel/UCwZwJkJcqh4Ze0qgVfhwnJw",
+    description:
+      "비트코인 차트를 읽어주는 남자. 매일 비트코인·알트코인 차트 분석과 시황 소통 방송.",
+    tags: ["차트분석", "시황", "소통"],
+    region: "korean",
+  },
+  {
+    name: "할 수 있다! 알고 투자 (강환국)",
+    handle: "@강환국",
+    url: "https://www.youtube.com/channel/UCSWPuzlD337Y6VBkyFPwT8g",
+    description:
+      "퀀트 투자 전문가 강환국 CFA. 데이터 기반 투자 전략, 자산배분, 마켓타이밍, 백테스트 교육.",
+    tags: ["퀀트", "전략", "교육"],
+    region: "korean",
+  },
+  {
+    name: "백훈종의 전지적 비트코인 시점",
+    handle: "@백훈종",
+    url: "https://www.youtube.com/@백훈종",
+    description:
+      "스매시파이 대표 백훈종 운영. 비트코인 철학과 장기 투자 전략, '결국 비트코인' 저자.",
+    tags: ["Bitcoin", "장기투자", "철학"],
+    region: "korean",
+  },
+  {
+    name: "블록미디어",
+    handle: "@Blockmedia",
+    url: "https://www.youtube.com/@Blockmedia",
+    description:
+      "한국 No.1 블록체인 뉴스 매체. 크립토 시장 뉴스, 규제 동향, 인터뷰, 경제 분석.",
+    tags: ["뉴스", "블록체인", "규제"],
+    region: "korean",
+  },
+  {
+    name: "멘탈이 전부다",
+    handle: "@mentalisall",
+    url: "https://www.youtube.com/@mentalisall",
+    description:
+      "신민철 운영. 비트코인, 미국주식, 투자 심리/멘탈 관리. 투자의 심리적 측면에 초점.",
+    tags: ["Bitcoin", "투자심리", "미국주식"],
+    region: "korean",
+  },
+  {
+    name: "디파이농부 조선생",
+    handle: "@Web3World",
+    url: "https://www.youtube.com/@Web3World",
+    description:
+      "DeFi 투자 전문. 크립토 시장 트렌드, 에어드랍 기회, 이더리움 생태계, 알트코인 분석.",
+    tags: ["DeFi", "에어드랍", "알트코인"],
+    region: "korean",
+  },
+  {
+    name: "신박한 신박사",
+    handle: "@amazingdrshin",
+    url: "https://www.youtube.com/@amazingdrshin",
+    description:
+      "비트코인 교양 채널. 경제, 철학, 정치, 역사를 비트코인 렌즈로 해석하는 비트코인 맥시멀리스트.",
+    tags: ["Bitcoin", "교양", "철학"],
+    region: "korean",
+  },
+  {
+    name: "피셔인베스트",
+    handle: "@msparksang",
+    url: "https://www.youtube.com/@msparksang",
+    description:
+      "지표 기반 투자 교육 채널. 주식, 채권, 재테크, 기업 탐방, 매크로 분석.",
+    tags: ["투자교육", "주식", "매크로"],
+    region: "korean",
   },
 ];
 
-const CATEGORIES = ["전체", ...Array.from(new Set(VIDEOS.map((v) => v.category)))];
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function getRegionColor(region: string) {
+  return region === "international"
+    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+    : "bg-rose-500/10 text-rose-600 dark:text-rose-400";
+}
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function PremiumVideosPage() {
+export default function CryptoChannelsPage() {
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("전체");
-  const [sortBy, setSortBy] = useState<"date" | "views" | "likes">("date");
-  const [playingVideo, setPlayingVideo] = useState<Video | null>(null);
-  const [showCount, setShowCount] = useState(6);
+  const [regionFilter, setRegionFilter] = useState<
+    "all" | "international" | "korean"
+  >("all");
 
   const filtered = useMemo(() => {
-    let list = [...VIDEOS];
+    let list = [...CHANNELS];
 
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
-        (v) =>
-          v.title.toLowerCase().includes(q) ||
-          v.description.toLowerCase().includes(q) ||
-          v.category.toLowerCase().includes(q)
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.description.toLowerCase().includes(q) ||
+          c.tags.some((t) => t.toLowerCase().includes(q))
       );
     }
 
-    if (selectedCategory !== "전체") {
-      list = list.filter((v) => v.category === selectedCategory);
+    if (regionFilter !== "all") {
+      list = list.filter((c) => c.region === regionFilter);
     }
 
-    if (sortBy === "date") list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    else if (sortBy === "views") list.sort((a, b) => b.views - a.views);
-    else list.sort((a, b) => b.likes - a.likes);
-
     return list;
-  }, [search, selectedCategory, sortBy]);
+  }, [search, regionFilter]);
 
-  const visible = filtered.slice(0, showCount);
+  const international = filtered.filter((c) => c.region === "international");
+  const korean = filtered.filter((c) => c.region === "korean");
+
+  const ChannelCard = ({ channel }: { channel: Channel }) => (
+    <a
+      href={channel.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group rounded-lg border border-border bg-card p-5 transition-all hover:border-primary/50 hover:shadow-md"
+    >
+      <div className="flex items-start gap-4">
+        {/* Avatar */}
+        <div className="flex-shrink-0 h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center">
+          <Youtube className="h-6 w-6 text-red-500" />
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold group-hover:text-primary transition-colors">
+              {channel.name}
+            </h3>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${getRegionColor(channel.region)}`}
+            >
+              {channel.region === "international" ? "해외" : "국내"}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {channel.handle}
+          </p>
+          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+            {channel.description}
+          </p>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {channel.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-muted px-2 py-0.5 text-xs"
+              >
+                {tag}
+              </span>
+            ))}
+            <span className="ml-auto flex items-center gap-1 text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              채널 방문 <ExternalLink className="h-3 w-3" />
+            </span>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
 
   return (
     <div className="p-6 space-y-6">
-      {/* Video Player Modal */}
-      {playingVideo && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold truncate pr-4">
-                {playingVideo.title}
-              </h3>
-              <button
-                onClick={() => setPlayingVideo(null)}
-                className="text-white/70 hover:text-white p-1"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
-              <iframe
-                src={`https://www.youtube.com/embed/${playingVideo.youtubeId}?autoplay=1`}
-                title={playingVideo.title}
-                className="absolute inset-0 w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-            <div className="mt-3 flex items-center gap-4 text-sm text-white/60">
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                {new Date(playingVideo.date).toLocaleDateString("ko-KR")}
-              </span>
-              <span className="flex items-center gap-1">
-                <Eye className="h-3.5 w-3.5" /> {playingVideo.views.toLocaleString()} views
-              </span>
-              <span className="flex items-center gap-1">
-                <ThumbsUp className="h-3.5 w-3.5" /> {playingVideo.likes.toLocaleString()}
-              </span>
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs">
-                {playingVideo.category}
-              </span>
-            </div>
-            <p className="mt-2 text-sm text-white/50">{playingVideo.description}</p>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Play className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Premium Videos</h1>
+            <Youtube className="h-6 w-6 text-red-500" />
+            <h1 className="text-2xl font-bold">Crypto Channels</h1>
           </div>
           <p className="text-muted-foreground">
-            주간 마켓 업데이트, 온체인 분석, 전략 세션, 교육 마스터클래스
+            크립토 투자에 유용한 국내외 유튜브 채널 모음
           </p>
         </div>
         <span className="text-sm text-muted-foreground">
-          총 {filtered.length}개
+          총 {filtered.length}개 채널
         </span>
       </div>
 
-      {/* Search & Filters */}
+      {/* Search & Filter */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -258,166 +378,75 @@ export default function PremiumVideosPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="영상 검색..."
+            placeholder="채널 검색..."
             className="w-full rounded-lg border border-border bg-background pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
           />
         </div>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as "date" | "views" | "likes")}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
-        >
-          <option value="date">최신순</option>
-          <option value="views">조회수순</option>
-          <option value="likes">좋아요순</option>
-        </select>
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((cat) => (
+      {/* Region Tabs */}
+      <div className="flex gap-2">
+        {[
+          { key: "all" as const, label: "전체", icon: Users },
+          { key: "international" as const, label: "해외", icon: Globe },
+          { key: "korean" as const, label: "국내", icon: Flag },
+        ].map(({ key, label, icon: Icon }) => (
           <button
-            key={cat}
-            onClick={() => { setSelectedCategory(cat); setShowCount(6); }}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              selectedCategory === cat
+            key={key}
+            onClick={() => setRegionFilter(key)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              regionFilter === key
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {cat}
+            <Icon className="h-3.5 w-3.5" />
+            {label}
           </button>
         ))}
       </div>
 
-      {/* Featured Video (first one) */}
-      {visible.length > 0 && (
-        <div
-          className="group relative rounded-xl border border-border bg-card overflow-hidden cursor-pointer"
-          onClick={() => setPlayingVideo(visible[0])}
-        >
-          <div className="flex flex-col md:flex-row">
-            {/* Thumbnail */}
-            <div className="relative md:w-1/2 h-56 md:h-auto bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-white/10 backdrop-blur flex items-center justify-center group-hover:bg-primary/80 group-hover:scale-110 transition-all">
-                <Play className="h-8 w-8 text-white ml-1" />
-              </div>
-              <span className="absolute bottom-3 right-3 rounded bg-black/70 px-2.5 py-1 text-xs font-mono text-white">
-                {visible[0].duration}
-              </span>
-              {visible[0].premium && (
-                <span className="absolute top-3 left-3 flex items-center gap-1 rounded-full bg-yellow-500/90 px-2.5 py-0.5 text-xs font-bold text-yellow-950">
-                  <Crown className="h-3 w-3" /> PREMIUM
-                </span>
-              )}
-            </div>
+      {/* Empty State */}
+      {filtered.length === 0 && (
+        <div className="text-center py-16 text-muted-foreground">
+          <Youtube className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p>검색 결과가 없습니다.</p>
+        </div>
+      )}
 
-            {/* Info */}
-            <div className="p-6 md:w-1/2 flex flex-col justify-center">
-              <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium w-fit mb-3">
-                최신 영상
-              </span>
-              <h2 className="text-xl font-bold group-hover:text-primary transition-colors">
-                {visible[0].title}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
-                {visible[0].description}
-              </p>
-              <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {new Date(visible[0].date).toLocaleDateString("ko-KR")}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Eye className="h-3.5 w-3.5" /> {visible[0].views.toLocaleString()}
-                </span>
-                <span className="flex items-center gap-1">
-                  <ThumbsUp className="h-3.5 w-3.5" /> {visible[0].likes.toLocaleString()}
-                </span>
-                <span className="rounded-full bg-muted px-2 py-0.5">{visible[0].category}</span>
-              </div>
-            </div>
+      {/* International Section */}
+      {international.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Globe className="h-5 w-5 text-blue-500" />
+            <h2 className="text-lg font-semibold">해외 채널</h2>
+            <span className="text-sm text-muted-foreground">
+              ({international.length})
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {international.map((ch) => (
+              <ChannelCard key={ch.handle} channel={ch} />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Video Grid */}
-      {visible.length > 1 && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {visible.slice(1).map((video) => (
-            <div
-              key={video.id}
-              onClick={() => setPlayingVideo(video)}
-              className="group rounded-lg border border-border bg-card overflow-hidden transition-all hover:border-primary/50 hover:shadow-md cursor-pointer"
-            >
-              {/* Thumbnail */}
-              <div className="relative h-44 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                <div className="h-12 w-12 rounded-full bg-white/10 backdrop-blur flex items-center justify-center group-hover:bg-primary/80 group-hover:scale-110 transition-all">
-                  {video.premium ? (
-                    <Lock className="h-5 w-5 text-white/60 group-hover:hidden" />
-                  ) : null}
-                  <Play
-                    className={`h-5 w-5 text-white ${video.premium ? "hidden group-hover:block" : ""}`}
-                  />
-                </div>
-                <span className="absolute bottom-2 right-2 rounded bg-black/70 px-2 py-0.5 text-xs font-mono text-white">
-                  {video.duration}
-                </span>
-                {video.premium && (
-                  <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-yellow-500/90 px-2 py-0.5 text-xs font-bold text-yellow-950">
-                    <Crown className="h-3 w-3" /> PREMIUM
-                  </span>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="p-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  <span>{new Date(video.date).toLocaleDateString("ko-KR")}</span>
-                  <span>&middot;</span>
-                  <span className="flex items-center gap-1">
-                    <Eye className="h-3 w-3" /> {video.views.toLocaleString()}
-                  </span>
-                  <span>&middot;</span>
-                  <span className="flex items-center gap-1">
-                    <ThumbsUp className="h-3 w-3" /> {video.likes.toLocaleString()}
-                  </span>
-                </div>
-                <h3 className="text-sm font-semibold leading-snug group-hover:text-primary transition-colors line-clamp-2">
-                  {video.title}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                  {video.description}
-                </p>
-                <div className="mt-3">
-                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs">
-                    {video.category}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Load More */}
-      {showCount < filtered.length && (
-        <div className="text-center">
-          <button
-            onClick={() => setShowCount((c) => c + 6)}
-            className="flex items-center gap-2 mx-auto rounded-lg border border-border px-6 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
-          >
-            <ChevronDown className="h-4 w-4" />
-            더보기 ({filtered.length - showCount}개 남음)
-          </button>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {filtered.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <Play className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>검색 결과가 없습니다.</p>
+      {/* Korean Section */}
+      {korean.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Flag className="h-5 w-5 text-rose-500" />
+            <h2 className="text-lg font-semibold">국내 채널</h2>
+            <span className="text-sm text-muted-foreground">
+              ({korean.length})
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {korean.map((ch) => (
+              <ChannelCard key={ch.handle} channel={ch} />
+            ))}
+          </div>
         </div>
       )}
     </div>

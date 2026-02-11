@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, WifiOff } from "lucide-react";
 import { getChartsBySection, getCategoriesForSection } from "@/data/chart-catalog";
 import type { ChartItem } from "@/data/chart-catalog";
 
 function hashCode(str: string): number {
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0; }
   return Math.abs(hash);
 }
 
@@ -26,10 +24,7 @@ function generateRandomLine(id: string): string {
 
 function ChartCard({ chart }: { chart: ChartItem }) {
   return (
-    <Link
-      href={`/charts/${chart.id}`}
-      className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md"
-    >
+    <Link href={`/charts/${chart.id}`} className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md">
       <div className="relative h-20 mb-3 rounded-md bg-muted/30 overflow-hidden">
         <svg viewBox="0 0 200 60" className="w-full h-full" preserveAspectRatio="none">
           <defs>
@@ -61,6 +56,11 @@ export default function MacroChartsPage() {
         <p className="text-muted-foreground mt-1">
           거시경제 지표 차트 - GDP, 인플레이션, 고용, 금리, 통화량
         </p>
+        <div className="mt-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <WifiOff className="h-3 w-3" /> 차트 클릭 시 실시간 데이터 로드 (FRED API 키 설정 시 활성화)
+          </span>
+        </div>
       </div>
 
       {categories.map((cat) => {

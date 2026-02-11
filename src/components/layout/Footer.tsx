@@ -16,16 +16,14 @@ const FOOTER_LINKS = [
       { label: "DCA Simulation", href: "/tools/dca-simulation" },
       { label: "Exit Strategies", href: "/tools/exit-strategies" },
       { label: "Portfolio Theory", href: "/tools/modern-portfolio-theory" },
-      { label: "Workbench", href: "/tools/workbench" },
+      { label: "Weighted Risk", href: "/tools/weighted-risk" },
     ],
   },
   {
     title: "Content",
     links: [
-      { label: "Studies", href: "/content/studies" },
-      { label: "Premium Videos", href: "/content/premium-videos" },
-      { label: "Newsletter", href: "/content/newsletter" },
-      { label: "Release Notes", href: "/content/release-notes" },
+      { label: "Crypto News", href: "/content/studies" },
+      { label: "Crypto Channels", href: "/content/premium-videos" },
     ],
   },
 ];
@@ -39,15 +37,12 @@ export function Footer() {
           <div className="col-span-2 sm:col-span-3 lg:col-span-1 mb-4 lg:mb-0">
             <div className="flex items-center gap-2 mb-3">
               <svg viewBox="0 0 40 40" className="h-7 w-7" aria-hidden="true">
-                <circle cx="20" cy="20" r="18" fill="#3b82f6" />
-                <path
-                  d="M28 20a8 8 0 01-16 0 8 8 0 0112-6.93A12 12 0 0028 20z"
-                  fill="#1e40af"
-                />
+                <rect width="40" height="40" rx="8" fill="#f7931a" />
+                <text x="20" y="28" textAnchor="middle" fontSize="24" fontWeight="bold" fill="#fff" fontFamily="Arial, sans-serif">₿</text>
               </svg>
               <span className="text-sm font-bold">
                 <span className="text-primary">BK</span>{" "}
-                <span className="text-muted-foreground">CRYPTOVERSE</span>
+                <span className="text-muted-foreground">INVESTMENT</span>
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
@@ -82,7 +77,7 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} BK Cryptoverse. All rights
+            &copy; {new Date().getFullYear()} BK INVESTMENT. All rights
             reserved.
           </p>
           <p className="text-xs text-muted-foreground">
