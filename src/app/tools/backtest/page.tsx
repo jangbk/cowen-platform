@@ -11,10 +11,7 @@ import {
   Target,
   Shield,
   Zap,
-  Calendar,
-  DollarSign,
   ArrowUpRight,
-  ArrowDownRight,
   Settings,
   Download,
   RefreshCw,
@@ -22,7 +19,16 @@ import {
   WifiOff,
 } from "lucide-react";
 
-const STRATEGIES = [
+interface Strategy {
+  id: string;
+  name: string;
+  description: string;
+  params: string[];
+  isBotStrategy?: boolean;
+}
+
+const STRATEGIES: Strategy[] = [
+  // --- 일반 전략 ---
   {
     id: "volatility-breakout",
     name: "변동성 돌파 (Larry Williams)",
@@ -59,6 +65,36 @@ const STRATEGIES = [
     description: "일정 가격 간격으로 매수/매도 주문을 설정하는 전략",
     params: ["그리드 수", "상한가", "하한가"],
   },
+  // --- 가동 중인 봇 ---
+  {
+    id: "bot-seykota-ema",
+    name: "🤖 Seykota EMA Bot (빗썸)",
+    description: "EMA 15/150 추세추종 — 실제 가동 중",
+    params: ["Fast EMA", "Slow EMA", "손절 (%)"],
+    isBotStrategy: true,
+  },
+  {
+    id: "bot-ptj-200ma",
+    name: "🤖 PTJ 200MA Bot (코인원)",
+    description: "200MA + 50MA 모멘텀 — 실제 가동 중",
+    params: ["MA 기간", "확인 MA", "밴드 (%)"],
+    isBotStrategy: true,
+  },
+  {
+    id: "bot-kis-rsi-macd",
+    name: "🤖 KIS RSI/MACD Bot (한투)",
+    description: "RSI 14 + MACD 12/26/9 — 실제 가동 중",
+    params: ["RSI 기간", "MACD 단기/장기", "손절 (%)"],
+    isBotStrategy: true,
+  },
+];
+
+const KR_STOCK_ASSETS: { label: string; value: string; symbol: string }[] = [
+  { label: "삼성전자", value: "삼성전자", symbol: "005930" },
+  { label: "SK하이닉스", value: "SK하이닉스", symbol: "000660" },
+  { label: "NAVER", value: "NAVER", symbol: "035420" },
+  { label: "카카오", value: "카카오", symbol: "035720" },
+  { label: "LG화학", value: "LG화학", symbol: "051910" },
 ];
 
 // Backtest result type
@@ -94,6 +130,8 @@ interface BacktestResult {
   dataSource: string;
 }
 
+type PriceBar = { date: string; open: number; high: number; low: number; close: number };
+
 const ASSET_TO_COINGECKO: Record<string, string> = {
   "BTC/KRW": "bitcoin",
   "ETH/KRW": "ethereum",
@@ -101,11 +139,109 @@ const ASSET_TO_COINGECKO: Record<string, string> = {
   "ETH/USDT": "ethereum",
   "SOL/KRW": "solana",
   "XRP/KRW": "ripple",
+  "BTC/USD": "bitcoin",
 };
+
+// --- Helper: compute common stats from equity curve and trades ---
+function computeStats(
+  prices: PriceBar[],
+  equityCurve: number[],
+  drawdownCurve: number[],
+  trades: { pnl: number; holdDays: number }[],
+  capital: number,
+  initialCapital: number,
+  maxDD: number,
+  strategyName: string,
+  assetName: string,
+  dataSourceLabel: string,
+): BacktestResult {
+  const profitTrades = trades.filter((t) => t.pnl > 0);
+  const lossTrades = trades.filter((t) => t.pnl <= 0);
+  const totalReturn = ((capital - initialCapital) / initialCapital) * 100;
+  const days = prices.length;
+  const years = days / 365;
+  const annualizedReturn = years > 0 ? (Math.pow(capital / initialCapital, 1 / years) - 1) * 100 : totalReturn;
+
+  const dailyReturns: number[] = [];
+  for (let i = 1; i < equityCurve.length; i++) {
+    dailyReturns.push((equityCurve[i] / equityCurve[i - 1] - 1) * 100);
+  }
+  const meanDaily = dailyReturns.length > 0 ? dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length : 0;
+  const stdDaily = dailyReturns.length > 0
+    ? Math.sqrt(dailyReturns.reduce((s, r) => s + (r - meanDaily) ** 2, 0) / dailyReturns.length)
+    : 0;
+  const downsideReturns = dailyReturns.filter((r) => r < 0);
+  const downside = downsideReturns.length > 0
+    ? Math.sqrt(downsideReturns.reduce((s, r) => s + r * r, 0) / downsideReturns.length)
+    : 0;
+
+  const sharpeAnn = stdDaily > 0 ? ((annualizedReturn - 4.5) / (stdDaily * Math.sqrt(365))) : 0;
+  const sortinoAnn = downside > 0 ? ((annualizedReturn - 4.5) / (downside * Math.sqrt(365))) : 0;
+  const calmar = maxDD !== 0 ? annualizedReturn / Math.abs(maxDD) : 0;
+
+  const benchmarkReturn = prices.length > 1 ? ((prices[prices.length - 1].close / prices[0].close - 1) * 100) : 0;
+  const benchmarkCurve = prices.map((p) => (p.close / prices[0].close) * 100);
+
+  const monthlyMap = new Map<string, { start: number; end: number }>();
+  for (let i = 0; i < equityCurve.length; i++) {
+    const m = prices[Math.min(i, prices.length - 1)].date.slice(0, 7);
+    if (!monthlyMap.has(m)) monthlyMap.set(m, { start: equityCurve[i], end: equityCurve[i] });
+    else monthlyMap.get(m)!.end = equityCurve[i];
+  }
+  const monthlyReturns = Array.from(monthlyMap.entries()).map(([month, { start, end }]) => ({
+    month,
+    ret: Math.round(((end / start - 1) * 100) * 10) / 10,
+  }));
+
+  let maxConsW = 0, maxConsL = 0, curConsW = 0, curConsL = 0;
+  for (const t of trades) {
+    if (t.pnl > 0) { curConsW++; curConsL = 0; maxConsW = Math.max(maxConsW, curConsW); }
+    else { curConsL++; curConsW = 0; maxConsL = Math.max(maxConsL, curConsL); }
+  }
+
+  const avgWin = profitTrades.length > 0 ? profitTrades.reduce((s, t) => s + t.pnl, 0) / profitTrades.length : 0;
+  const avgLoss = lossTrades.length > 0 ? lossTrades.reduce((s, t) => s + t.pnl, 0) / lossTrades.length : 0;
+  const profitFactor = (lossTrades.length > 0 && avgLoss !== 0)
+    ? Math.abs(profitTrades.reduce((s, t) => s + t.pnl, 0) / lossTrades.reduce((s, t) => s + t.pnl, 0))
+    : 0;
+  const avgHoldingDays = trades.length > 0 ? Math.round(trades.reduce((s, t) => s + t.holdDays, 0) / trades.length) : 0;
+
+  return {
+    strategy: strategyName,
+    asset: assetName,
+    period: `${prices[0].date} ~ ${prices[prices.length - 1].date}`,
+    initialCapital,
+    finalCapital: Math.round(capital),
+    totalReturn: Math.round(totalReturn * 10) / 10,
+    annualizedReturn: Math.round(annualizedReturn * 10) / 10,
+    maxDrawdown: Math.round(maxDD * 10) / 10,
+    sharpeRatio: Math.round(sharpeAnn * 100) / 100,
+    sortinoRatio: Math.round(sortinoAnn * 100) / 100,
+    calmarRatio: Math.round(calmar * 100) / 100,
+    winRate: trades.length > 0 ? Math.round((profitTrades.length / trades.length) * 1000) / 10 : 0,
+    profitFactor: Math.round(profitFactor * 100) / 100,
+    totalTrades: trades.length,
+    profitTrades: profitTrades.length,
+    lossTrades: lossTrades.length,
+    avgWin: Math.round(avgWin * 10) / 10,
+    avgLoss: Math.round(avgLoss * 10) / 10,
+    avgHoldingDays: avgHoldingDays || 1,
+    maxConsecutiveWins: maxConsW,
+    maxConsecutiveLosses: maxConsL,
+    benchmarkReturn: Math.round(benchmarkReturn * 10) / 10,
+    alpha: Math.round((totalReturn - benchmarkReturn) * 10) / 10,
+    beta: 0.65,
+    equityCurve,
+    benchmarkCurve,
+    monthlyReturns,
+    drawdownCurve,
+    dataSource: dataSourceLabel,
+  };
+}
 
 // Run volatility breakout backtest on real data
 function runVolatilityBreakout(
-  prices: { date: string; open: number; high: number; low: number; close: number }[],
+  prices: PriceBar[],
   k: number,
   investRatio: number,
   initialCapital: number,
@@ -158,7 +294,6 @@ function runVolatilityBreakout(
   const stdDaily = Math.sqrt(dailyReturns.reduce((s, r) => s + (r - meanDaily) ** 2, 0) / dailyReturns.length);
   const downside = Math.sqrt(dailyReturns.filter((r) => r < 0).reduce((s, r) => s + r * r, 0) / Math.max(1, dailyReturns.filter((r) => r < 0).length));
 
-  const sharpe = stdDaily > 0 ? (meanDaily * Math.sqrt(365)) / (stdDaily * Math.sqrt(365) / Math.sqrt(365)) : 0;
   const sharpeAnn = stdDaily > 0 ? ((annualizedReturn - 4.5) / (stdDaily * Math.sqrt(365))) : 0;
   const sortinoAnn = downside > 0 ? ((annualizedReturn - 4.5) / (downside * Math.sqrt(365))) : 0;
   const calmar = maxDD !== 0 ? annualizedReturn / Math.abs(maxDD) : 0;
@@ -224,6 +359,381 @@ function runVolatilityBreakout(
   };
 }
 
+// --- EMA helper ---
+function calcEMA(closes: number[], period: number): number[] {
+  const ema: number[] = [];
+  const k = 2 / (period + 1);
+  ema[0] = closes[0];
+  for (let i = 1; i < closes.length; i++) {
+    ema[i] = closes[i] * k + ema[i - 1] * (1 - k);
+  }
+  return ema;
+}
+
+// --- SMA helper ---
+function calcSMA(closes: number[], period: number): (number | null)[] {
+  const sma: (number | null)[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) {
+      sma.push(null);
+    } else {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+      sma.push(sum / period);
+    }
+  }
+  return sma;
+}
+
+// --- RSI helper (Wilder's smoothing) ---
+function calcRSI(closes: number[], period: number): (number | null)[] {
+  const rsi: (number | null)[] = new Array(closes.length).fill(null);
+  if (closes.length <= period) return rsi;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const change = closes[i] - closes[i - 1];
+    avgGain += (change > 0 ? change : 0);
+    avgLoss += (change < 0 ? -change : 0);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  if (avgLoss === 0) rsi[period] = 100;
+  else rsi[period] = 100 - 100 / (1 + avgGain / avgLoss);
+
+  for (let i = period + 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    if (avgLoss === 0) rsi[i] = 100;
+    else rsi[i] = 100 - 100 / (1 + avgGain / avgLoss);
+  }
+
+  return rsi;
+}
+
+// --- Seykota EMA Bot ---
+function runSeykotaEMA(
+  prices: PriceBar[],
+  fastPeriod: number = 15,
+  slowPeriod: number = 150,
+  stopLoss: number = 10,
+  trailingStop: number = 15,
+  trailingActivation: number = 5,
+  commission: number = 0.001,
+  initialCapital: number = 10000000,
+): BacktestResult {
+  const closes = prices.map((p) => p.close);
+  const emaFast = calcEMA(closes, fastPeriod);
+  const emaSlow = calcEMA(closes, slowPeriod);
+
+  let capital = initialCapital;
+  let position = 0; // number of units held
+  let entryPrice = 0;
+  let peakSinceEntry = 0;
+  let trailingActive = false;
+  const equityCurve: number[] = [100];
+  const trades: { pnl: number; holdDays: number }[] = [];
+  let peak = capital;
+  let maxDD = 0;
+  const drawdownCurve: number[] = [0];
+  let holdStart = 0;
+
+  for (let i = Math.max(slowPeriod, 1); i < prices.length; i++) {
+    const close = closes[i];
+    const prevFast = emaFast[i - 1];
+    const prevSlow = emaSlow[i - 1];
+    const curFast = emaFast[i];
+    const curSlow = emaSlow[i];
+
+    if (position === 0) {
+      // Golden cross: fast crosses above slow
+      if (prevFast <= prevSlow && curFast > curSlow) {
+        const cost = capital * (1 - commission);
+        position = cost / close;
+        entryPrice = close;
+        peakSinceEntry = close;
+        trailingActive = false;
+        holdStart = i;
+      }
+    } else {
+      // Update peak since entry
+      peakSinceEntry = Math.max(peakSinceEntry, close);
+      const pnlPct = ((close - entryPrice) / entryPrice) * 100;
+
+      // Check trailing activation
+      if (!trailingActive && pnlPct >= trailingActivation) {
+        trailingActive = true;
+      }
+
+      let shouldSell = false;
+      // Death cross
+      if (prevFast >= prevSlow && curFast < curSlow) shouldSell = true;
+      // Stop loss
+      if (pnlPct <= -stopLoss) shouldSell = true;
+      // Trailing stop (only if activated)
+      if (trailingActive) {
+        const dropFromPeak = ((peakSinceEntry - close) / peakSinceEntry) * 100;
+        if (dropFromPeak >= trailingStop) shouldSell = true;
+      }
+
+      if (shouldSell) {
+        const proceeds = position * close * (1 - commission);
+        const tradePnl = ((close - entryPrice) / entryPrice) * 100;
+        trades.push({ pnl: tradePnl, holdDays: i - holdStart });
+        capital = proceeds;
+        position = 0;
+      }
+    }
+
+    // Track equity (mark to market)
+    const equity = position > 0 ? position * close : capital;
+    peak = Math.max(peak, equity);
+    const dd = ((equity - peak) / peak) * 100;
+    maxDD = Math.min(maxDD, dd);
+    equityCurve.push((equity / initialCapital) * 100);
+    drawdownCurve.push(dd);
+  }
+
+  // Close open position at end
+  if (position > 0) {
+    const lastClose = closes[closes.length - 1];
+    const proceeds = position * lastClose * (1 - commission);
+    const tradePnl = ((lastClose - entryPrice) / entryPrice) * 100;
+    trades.push({ pnl: tradePnl, holdDays: prices.length - holdStart });
+    capital = proceeds;
+    position = 0;
+  } else {
+    // capital is already correct
+  }
+
+  return computeStats(
+    prices.slice(Math.max(slowPeriod - 1, 0)),
+    equityCurve,
+    drawdownCurve,
+    trades,
+    capital,
+    initialCapital,
+    maxDD,
+    "Seykota EMA Bot",
+    "BTC",
+    "CryptoCompare (실제 데이터)",
+  );
+}
+
+// --- PTJ 200MA Bot ---
+// 클래식 PTJ 전략: price > 200SMA면 롱, price < 200SMA면 청산
+// 밴드 필터로 200SMA 근처 휩소 방지, 50SMA>200SMA 골든크로스 확인
+function runPTJ200MA(
+  prices: PriceBar[],
+  maPeriod: number = 200,
+  confirmMa: number = 50,
+  band: number = 1,
+  commission: number = 0.001,
+  initialCapital: number = 10000000,
+): BacktestResult {
+  const closes = prices.map((p) => p.close);
+  const smaLong = calcSMA(closes, maPeriod);
+  const smaShort = calcSMA(closes, confirmMa);
+  const bandRatio = band / 100; // 1% → 0.01
+
+  let capital = initialCapital;
+  let position = 0;
+  let entryPrice = 0;
+  const equityCurve: number[] = [100];
+  const trades: { pnl: number; holdDays: number }[] = [];
+  let peak = capital;
+  let maxDD = 0;
+  const drawdownCurve: number[] = [0];
+  let holdStart = 0;
+
+  const startIdx = Math.max(maPeriod, confirmMa);
+
+  for (let i = startIdx; i < prices.length; i++) {
+    const close = closes[i];
+    const ma200 = smaLong[i];
+    const ma50 = smaShort[i];
+
+    if (ma200 === null || ma50 === null) continue;
+
+    if (position === 0) {
+      // 매수: 가격이 200SMA*(1+밴드) 위 AND 50SMA > 200SMA (골든크로스)
+      if (close > ma200 * (1 + bandRatio) && ma50 > ma200) {
+        const cost = capital * (1 - commission);
+        position = cost / close;
+        entryPrice = close;
+        holdStart = i;
+      }
+    } else {
+      // 매도: 가격이 200SMA*(1-밴드) 아래로 하락
+      if (close < ma200 * (1 - bandRatio)) {
+        const proceeds = position * close * (1 - commission);
+        const tradePnl = ((close - entryPrice) / entryPrice) * 100;
+        trades.push({ pnl: tradePnl, holdDays: i - holdStart });
+        capital = proceeds;
+        position = 0;
+      }
+    }
+
+    const equity = position > 0 ? position * close : capital;
+    peak = Math.max(peak, equity);
+    const dd = ((equity - peak) / peak) * 100;
+    maxDD = Math.min(maxDD, dd);
+    equityCurve.push((equity / initialCapital) * 100);
+    drawdownCurve.push(dd);
+  }
+
+  // Close open position
+  if (position > 0) {
+    const lastClose = closes[closes.length - 1];
+    const proceeds = position * lastClose * (1 - commission);
+    const tradePnl = ((lastClose - entryPrice) / entryPrice) * 100;
+    trades.push({ pnl: tradePnl, holdDays: prices.length - holdStart });
+    capital = proceeds;
+  }
+
+  return computeStats(
+    prices.slice(Math.max(startIdx - 1, 0)),
+    equityCurve,
+    drawdownCurve,
+    trades,
+    capital,
+    initialCapital,
+    maxDD,
+    "PTJ 200MA Bot",
+    "BTC",
+    "CryptoCompare (실제 데이터)",
+  );
+}
+
+// --- KIS RSI/MACD Bot ---
+function runKISRsiMacd(
+  prices: PriceBar[],
+  rsiPeriod: number = 14,
+  macdFast: number = 12,
+  macdSlow: number = 26,
+  macdSignalPeriod: number = 9,
+  stopLoss: number = 3,
+  takeProfit: number = 5,
+  commission: number = 0.00015,
+  initialCapital: number = 10000000,
+): BacktestResult {
+  const closes = prices.map((p) => p.close);
+  const rsi = calcRSI(closes, rsiPeriod);
+
+  // MACD
+  const emaFastArr = calcEMA(closes, macdFast);
+  const emaSlowArr = calcEMA(closes, macdSlow);
+  const macdLine: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    macdLine.push(emaFastArr[i] - emaSlowArr[i]);
+  }
+  const signalLine = calcEMA(macdLine, macdSignalPeriod);
+
+  let capital = initialCapital;
+  let position = 0;
+  let entryPrice = 0;
+  const equityCurve: number[] = [100];
+  const trades: { pnl: number; holdDays: number }[] = [];
+  let peak = capital;
+  let maxDD = 0;
+  const drawdownCurve: number[] = [0];
+  let holdStart = 0;
+
+  // Track previous RSI for crossover detection
+  const startIdx = Math.max(macdSlow + macdSignalPeriod, rsiPeriod + 1);
+
+  for (let i = startIdx; i < prices.length; i++) {
+    const close = closes[i];
+    const curRsi = rsi[i];
+    const prevRsi = rsi[i - 1];
+    const curMacd = macdLine[i];
+    const prevMacd = macdLine[i - 1];
+    const curSignal = signalLine[i];
+    const prevSignal = signalLine[i - 1];
+
+    if (curRsi === null || prevRsi === null) continue;
+
+    if (position === 0) {
+      // Buy: RSI crosses above 30 (oversold exit) AND MACD golden cross
+      const rsiOversoldExit = prevRsi <= 30 && curRsi > 30;
+      const macdGoldenCross = prevMacd <= prevSignal && curMacd > curSignal;
+      // Use OR for more signals — RSI oversold exit OR MACD golden cross (both conditions must be favorable)
+      if (rsiOversoldExit || (macdGoldenCross && curRsi < 50)) {
+        const cost = capital * (1 - commission);
+        position = cost / close;
+        entryPrice = close;
+        holdStart = i;
+      }
+    } else {
+      const pnlPct = ((close - entryPrice) / entryPrice) * 100;
+
+      let shouldSell = false;
+      // RSI overbought exit: RSI crosses below 70
+      const rsiOverboughtExit = prevRsi >= 70 && curRsi < 70;
+      // MACD dead cross
+      const macdDeadCross = prevMacd >= prevSignal && curMacd < curSignal;
+      if (rsiOverboughtExit || macdDeadCross) shouldSell = true;
+      // Stop loss
+      if (pnlPct <= -stopLoss) shouldSell = true;
+      // Take profit
+      if (pnlPct >= takeProfit) shouldSell = true;
+
+      if (shouldSell) {
+        const proceeds = position * close * (1 - commission);
+        const tradePnl = ((close - entryPrice) / entryPrice) * 100;
+        trades.push({ pnl: tradePnl, holdDays: i - holdStart });
+        capital = proceeds;
+        position = 0;
+      }
+    }
+
+    const equity = position > 0 ? position * close : capital;
+    peak = Math.max(peak, equity);
+    const dd = ((equity - peak) / peak) * 100;
+    maxDD = Math.min(maxDD, dd);
+    equityCurve.push((equity / initialCapital) * 100);
+    drawdownCurve.push(dd);
+  }
+
+  // Close open position
+  if (position > 0) {
+    const lastClose = closes[closes.length - 1];
+    const proceeds = position * lastClose * (1 - commission);
+    const tradePnl = ((lastClose - entryPrice) / entryPrice) * 100;
+    trades.push({ pnl: tradePnl, holdDays: prices.length - holdStart });
+    capital = proceeds;
+  }
+
+  // Determine asset name from prices context (will be overridden by caller)
+  return computeStats(
+    prices.slice(Math.max(startIdx - 1, 0)),
+    equityCurve,
+    drawdownCurve,
+    trades,
+    capital,
+    initialCapital,
+    maxDD,
+    "KIS RSI/MACD Bot",
+    "한국주식",
+    "Yahoo Finance (실제 데이터)",
+  );
+}
+
+// --- Default param values per bot strategy ---
+function getBotDefaults(strategyId: string): string[] {
+  switch (strategyId) {
+    case "bot-seykota-ema": return ["15", "150", "10"];
+    case "bot-ptj-200ma": return ["200", "50", "1"];
+    case "bot-kis-rsi-macd": return ["14", "12/26/9", "3"];
+    default: return ["0.5", "80", "5"];
+  }
+}
+
 export default function BacktestPage() {
   const [selectedStrategy, setSelectedStrategy] = useState(STRATEGIES[0].id);
   const [asset, setAsset] = useState("BTC/KRW");
@@ -234,32 +744,129 @@ export default function BacktestPage() {
   const [hasResult, setHasResult] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [dataSource, setDataSource] = useState<string>("");
+  const [paramValues, setParamValues] = useState<string[]>(["0.5", "80", "5"]);
 
   const strategy = STRATEGIES.find((s) => s.id === selectedStrategy)!;
+  const isBotStrategy = strategy?.isBotStrategy ?? false;
+  const isKIS = selectedStrategy === "bot-kis-rsi-macd";
+  const isCryptoBotStrategy = selectedStrategy === "bot-seykota-ema" || selectedStrategy === "bot-ptj-200ma";
+
+  const normalStrategies = STRATEGIES.filter((s) => !s.isBotStrategy);
+  const botStrategies = STRATEGIES.filter((s) => s.isBotStrategy);
+
+  const handleStrategyChange = (strategyId: string) => {
+    setSelectedStrategy(strategyId);
+    const newDefaults = getBotDefaults(strategyId);
+    setParamValues(newDefaults);
+
+    // Auto-set asset and date range
+    if (strategyId === "bot-seykota-ema" || strategyId === "bot-ptj-200ma") {
+      setAsset("BTC/USD");
+      setStartDate("2017-01-01");
+    } else if (strategyId === "bot-kis-rsi-macd") {
+      setAsset("삼성전자");
+    }
+  };
 
   const handleRunBacktest = useCallback(async () => {
     setIsRunning(true);
     setHasResult(false);
 
     try {
+      const capital = parseInt(initialCapital) || 10000000;
+
+      // KIS RSI/MACD: fetch from Yahoo Finance
+      if (selectedStrategy === "bot-kis-rsi-macd") {
+        const krStock = KR_STOCK_ASSETS.find((s) => s.value === asset);
+        const symbol = krStock ? krStock.symbol : "005930";
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.KS?range=2y&interval=1d`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Yahoo Finance error");
+        const json = await res.json();
+
+        const chart = json.chart?.result?.[0];
+        if (!chart || !chart.timestamp) throw new Error("No Yahoo data");
+
+        const timestamps = chart.timestamp;
+        const quote = chart.indicators?.quote?.[0];
+        if (!quote) throw new Error("No quote data");
+
+        const prices: PriceBar[] = [];
+        for (let i = 0; i < timestamps.length; i++) {
+          if (quote.open[i] != null && quote.close[i] != null) {
+            prices.push({
+              date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+              open: quote.open[i],
+              high: quote.high[i],
+              low: quote.low[i],
+              close: quote.close[i],
+            });
+          }
+        }
+
+        if (prices.length < 50) throw new Error("Insufficient data");
+
+        // Parse KIS params
+        const rsiPeriod = parseInt(paramValues[0]) || 14;
+        const macdParts = paramValues[1].split("/").map(Number);
+        const macdFast = macdParts[0] || 12;
+        const macdSlow = macdParts[1] || 26;
+        const macdSignal = macdParts[2] || 9;
+        const stopLoss = parseFloat(paramValues[2]) || 3;
+
+        const backResult = runKISRsiMacd(prices, rsiPeriod, macdFast, macdSlow, macdSignal, stopLoss, 5, 0.00015, capital);
+        backResult.asset = krStock?.label || "삼성전자";
+        backResult.dataSource = "Yahoo Finance (실제 데이터)";
+        setResult(backResult);
+        setDataSource("Yahoo Finance (실제 데이터)");
+        setHasResult(true);
+        return;
+      }
+
+      // Crypto strategies: CryptoCompare
       const coinId = ASSET_TO_COINGECKO[asset] || "bitcoin";
-      // Fetch OHLC data from CryptoCompare (free, no key needed)
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      const limit = Math.min(daysDiff, 2000);
+
+      // Bot strategies need extra warmup bars for MA calculation
+      let warmupBars = 0;
+      if (selectedStrategy === "bot-ptj-200ma") {
+        warmupBars = (parseInt(paramValues[0]) || 200) + 10;
+      } else if (selectedStrategy === "bot-seykota-ema") {
+        warmupBars = (parseInt(paramValues[1]) || 150) + 10;
+      }
+      const totalBarsNeeded = daysDiff + warmupBars;
       const toTs = Math.floor(end.getTime() / 1000);
+      const fsym = coinId === "bitcoin" ? "BTC" : coinId === "ethereum" ? "ETH" : coinId === "solana" ? "SOL" : "XRP";
 
-      const url = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${coinId === "bitcoin" ? "BTC" : coinId === "ethereum" ? "ETH" : coinId === "solana" ? "SOL" : "XRP"}&tsym=USD&limit=${limit}&toTs=${toTs}`;
+      // Fetch data — multiple requests if >2000 bars needed
+      const allDataMap = new Map<number, { time: number; open: number; high: number; low: number; close: number }>();
+      if (totalBarsNeeded <= 2000) {
+        const url = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${fsym}&tsym=USD&limit=${totalBarsNeeded}&toTs=${toTs}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("CryptoCompare error");
+        const json = await res.json();
+        if (json.Data?.Data) for (const d of json.Data.Data) if (d.open > 0) allDataMap.set(d.time, d);
+      } else {
+        // Split into 2 requests
+        const midTs = toTs - Math.floor(totalBarsNeeded / 2) * 86400;
+        const urls = [
+          `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${fsym}&tsym=USD&limit=2000&toTs=${midTs}`,
+          `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${fsym}&tsym=USD&limit=2000&toTs=${toTs}`,
+        ];
+        const results = await Promise.all(urls.map((u) => fetch(u).then((r) => r.json())));
+        for (const json of results) {
+          if (json.Data?.Data) for (const d of json.Data.Data) if (d.open > 0) allDataMap.set(d.time, d);
+        }
+      }
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("CryptoCompare error");
-      const json = await res.json();
+      const pricesSorted = Array.from(allDataMap.values()).sort((a, b) => a.time - b.time);
 
-      if (json.Data?.Data && json.Data.Data.length > 10) {
-        const prices = json.Data.Data
-          .filter((d: { open: number }) => d.open > 0)
-          .map((d: { time: number; open: number; high: number; low: number; close: number }) => ({
+      if (pricesSorted.length > 10) {
+        const prices: PriceBar[] = pricesSorted
+          .map((d) => ({
             date: new Date(d.time * 1000).toISOString().split("T")[0],
             open: d.open,
             high: d.high,
@@ -267,9 +874,29 @@ export default function BacktestPage() {
             close: d.close,
           }));
 
-        // Run the selected strategy
-        const capital = parseInt(initialCapital) || 10000000;
-        const backResult = runVolatilityBreakout(prices, 0.5, 80, capital);
+        let backResult: BacktestResult;
+
+        switch (selectedStrategy) {
+          case "bot-seykota-ema": {
+            const fast = parseInt(paramValues[0]) || 15;
+            const slow = parseInt(paramValues[1]) || 150;
+            const sl = parseFloat(paramValues[2]) || 10;
+            backResult = runSeykotaEMA(prices, fast, slow, sl, 15, 5, 0.001, capital);
+            break;
+          }
+          case "bot-ptj-200ma": {
+            const ma = parseInt(paramValues[0]) || 200;
+            const confirm = parseInt(paramValues[1]) || 50;
+            const bandPct = parseFloat(paramValues[2]) || 1;
+            backResult = runPTJ200MA(prices, ma, confirm, bandPct, 0.001, capital);
+            break;
+          }
+          default: {
+            backResult = runVolatilityBreakout(prices, 0.5, 80, capital);
+            break;
+          }
+        }
+
         setResult(backResult);
         setDataSource("CryptoCompare (실제 데이터)");
         setHasResult(true);
@@ -281,7 +908,7 @@ export default function BacktestPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [asset, startDate, endDate, initialCapital]);
+  }, [asset, startDate, endDate, initialCapital, selectedStrategy, paramValues]);
 
   const r = result;
 
@@ -327,14 +954,23 @@ export default function BacktestPage() {
             <label className="text-sm text-muted-foreground">전략 선택</label>
             <select
               value={selectedStrategy}
-              onChange={(e) => setSelectedStrategy(e.target.value)}
+              onChange={(e) => handleStrategyChange(e.target.value)}
               className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             >
-              {STRATEGIES.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              <optgroup label="일반 전략">
+                {normalStrategies.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="🤖 가동 중인 봇">
+                {botStrategies.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
               {strategy.description}
@@ -344,18 +980,35 @@ export default function BacktestPage() {
           {/* Asset */}
           <div>
             <label className="text-sm text-muted-foreground">자산</label>
-            <select
-              value={asset}
-              onChange={(e) => setAsset(e.target.value)}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="BTC/KRW">Bitcoin (BTC/KRW)</option>
-              <option value="ETH/KRW">Ethereum (ETH/KRW)</option>
-              <option value="BTC/USDT">Bitcoin (BTC/USDT)</option>
-              <option value="ETH/USDT">Ethereum (ETH/USDT)</option>
-              <option value="SOL/KRW">Solana (SOL/KRW)</option>
-              <option value="XRP/KRW">XRP (XRP/KRW)</option>
-            </select>
+            {isKIS ? (
+              <select
+                value={asset}
+                onChange={(e) => setAsset(e.target.value)}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              >
+                {KR_STOCK_ASSETS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label} ({s.symbol}.KS)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={asset}
+                onChange={(e) => setAsset(e.target.value)}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              >
+                {isCryptoBotStrategy && (
+                  <option value="BTC/USD">Bitcoin (BTC/USD)</option>
+                )}
+                <option value="BTC/KRW">Bitcoin (BTC/KRW)</option>
+                <option value="ETH/KRW">Ethereum (ETH/KRW)</option>
+                <option value="BTC/USDT">Bitcoin (BTC/USDT)</option>
+                <option value="ETH/USDT">Ethereum (ETH/USDT)</option>
+                <option value="SOL/KRW">Solana (SOL/KRW)</option>
+                <option value="XRP/KRW">XRP (XRP/KRW)</option>
+              </select>
+            )}
           </div>
 
           {/* Period */}
@@ -396,11 +1049,16 @@ export default function BacktestPage() {
         {/* Strategy Parameters */}
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {strategy.params.map((param, i) => (
-            <div key={i}>
+            <div key={`${selectedStrategy}-${i}`}>
               <label className="text-sm text-muted-foreground">{param}</label>
               <input
                 type="text"
-                defaultValue={i === 0 ? "0.5" : i === 1 ? "80" : "5"}
+                value={paramValues[i] ?? ""}
+                onChange={(e) => {
+                  const next = [...paramValues];
+                  next[i] = e.target.value;
+                  setParamValues(next);
+                }}
                 className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
@@ -440,15 +1098,15 @@ export default function BacktestPage() {
             {[
               {
                 label: "총 수익률",
-                value: `+${r.totalReturn}%`,
+                value: `${r.totalReturn >= 0 ? "+" : ""}${r.totalReturn}%`,
                 icon: <TrendingUp className="h-4 w-4" />,
-                color: "text-positive",
+                color: r.totalReturn >= 0 ? "text-positive" : "text-negative",
               },
               {
                 label: "연환산 수익률",
-                value: `+${r.annualizedReturn}%`,
+                value: `${r.annualizedReturn >= 0 ? "+" : ""}${r.annualizedReturn}%`,
                 icon: <ArrowUpRight className="h-4 w-4" />,
-                color: "text-positive",
+                color: r.annualizedReturn >= 0 ? "text-positive" : "text-negative",
               },
               {
                 label: "MDD",
@@ -476,9 +1134,9 @@ export default function BacktestPage() {
               },
               {
                 label: "Alpha",
-                value: `+${r.alpha}%`,
+                value: `${r.alpha >= 0 ? "+" : ""}${r.alpha}%`,
                 icon: <Activity className="h-4 w-4" />,
-                color: "text-positive",
+                color: r.alpha >= 0 ? "text-positive" : "text-negative",
               },
               {
                 label: "총 거래",
@@ -580,11 +1238,11 @@ export default function BacktestPage() {
               <div className="mt-2 flex items-center gap-4 text-xs">
                 <span className="flex items-center gap-1">
                   <span className="h-0.5 w-4 bg-blue-500 rounded" />
-                  전략: +{r.totalReturn}%
+                  전략: {r.totalReturn >= 0 ? "+" : ""}{r.totalReturn}%
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="h-0.5 w-4 bg-gray-400 rounded border-dashed" />
-                  벤치마크: +{r.benchmarkReturn}%
+                  벤치마크: {r.benchmarkReturn >= 0 ? "+" : ""}{r.benchmarkReturn}%
                 </span>
               </div>
             </section>
@@ -749,10 +1407,10 @@ export default function BacktestPage() {
                 </h4>
                 <div className="space-y-2">
                   {[
-                    ["총 수익률", `+${r.totalReturn}%`],
-                    ["연환산 수익률", `+${r.annualizedReturn}%`],
-                    ["벤치마크 수익률", `+${r.benchmarkReturn}%`],
-                    ["Alpha", `+${r.alpha}%`],
+                    ["총 수익률", `${r.totalReturn >= 0 ? "+" : ""}${r.totalReturn}%`],
+                    ["연환산 수익률", `${r.annualizedReturn >= 0 ? "+" : ""}${r.annualizedReturn}%`],
+                    ["벤치마크 수익률", `${r.benchmarkReturn >= 0 ? "+" : ""}${r.benchmarkReturn}%`],
+                    ["Alpha", `${r.alpha >= 0 ? "+" : ""}${r.alpha}%`],
                     ["Beta", r.beta.toFixed(2)],
                     ["최종 자본", `${(r.finalCapital / 10000).toLocaleString()}만원`],
                   ].map(([label, value]) => (
