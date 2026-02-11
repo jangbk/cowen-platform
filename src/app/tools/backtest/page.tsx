@@ -83,8 +83,8 @@ const STRATEGIES: Strategy[] = [
   {
     id: "bot-kis-rsi-macd",
     name: "🤖 KIS RSI/MACD Bot (한투)",
-    description: "RSI 14 + MACD 12/26/9 — 실제 가동 중",
-    params: ["RSI 기간", "MACD 단기/장기", "손절 (%)"],
+    description: "MACD 크로스 + EMA 트렌드 필터 — 실제 가동 중",
+    params: ["MACD 단기/장기/시그널", "EMA 필터", "손절 (%)"],
     isBotStrategy: true,
   },
 ];
@@ -404,37 +404,6 @@ function calcATR(prices: PriceBar[], period: number): number[] {
   return atr;
 }
 
-// --- RSI helper (Wilder's smoothing) ---
-function calcRSI(closes: number[], period: number): (number | null)[] {
-  const rsi: (number | null)[] = new Array(closes.length).fill(null);
-  if (closes.length <= period) return rsi;
-
-  let avgGain = 0;
-  let avgLoss = 0;
-  for (let i = 1; i <= period; i++) {
-    const change = closes[i] - closes[i - 1];
-    avgGain += (change > 0 ? change : 0);
-    avgLoss += (change < 0 ? -change : 0);
-  }
-  avgGain /= period;
-  avgLoss /= period;
-
-  if (avgLoss === 0) rsi[period] = 100;
-  else rsi[period] = 100 - 100 / (1 + avgGain / avgLoss);
-
-  for (let i = period + 1; i < closes.length; i++) {
-    const change = closes[i] - closes[i - 1];
-    const gain = change > 0 ? change : 0;
-    const loss = change < 0 ? -change : 0;
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-    if (avgLoss === 0) rsi[i] = 100;
-    else rsi[i] = 100 - 100 / (1 + avgGain / avgLoss);
-  }
-
-  return rsi;
-}
-
 // --- Seykota EMA Bot ---
 // EMA + ATR 동적밴드 추세추종 전략 (Ed Seykota 스타일)
 // 매수: price > EMA + ATR*배수 (상승 추세 돌파)
@@ -603,20 +572,23 @@ function runPTJ200MA(
   );
 }
 
-// --- KIS RSI/MACD Bot ---
+// --- KIS MACD Bot ---
+// MACD 크로스 + EMA 트렌드 필터 전략
+// 매수: MACD 골든크로스 (MACD가 시그널 상향돌파) AND price > EMA (상승추세 확인)
+// 매도: MACD 데드크로스 (MACD가 시그널 하향돌파) OR 손절
+// 익절 없음 (수익 거래를 조기 청산하지 않음)
 function runKISRsiMacd(
   prices: PriceBar[],
-  rsiPeriod: number = 14,
   macdFast: number = 12,
   macdSlow: number = 26,
   macdSignalPeriod: number = 9,
-  stopLoss: number = 3,
-  takeProfit: number = 5,
+  emaPeriod: number = 20,
+  stopLoss: number = 7,
   commission: number = 0.00015,
   initialCapital: number = 10000000,
 ): BacktestResult {
   const closes = prices.map((p) => p.close);
-  const rsi = calcRSI(closes, rsiPeriod);
+  const ema = calcEMA(closes, emaPeriod);
 
   // MACD
   const emaFastArr = calcEMA(closes, macdFast);
@@ -637,26 +609,19 @@ function runKISRsiMacd(
   const drawdownCurve: number[] = [0];
   let holdStart = 0;
 
-  // Track previous RSI for crossover detection
-  const startIdx = Math.max(macdSlow + macdSignalPeriod, rsiPeriod + 1);
+  const startIdx = Math.max(macdSlow + macdSignalPeriod, emaPeriod);
 
   for (let i = startIdx; i < prices.length; i++) {
     const close = closes[i];
-    const curRsi = rsi[i];
-    const prevRsi = rsi[i - 1];
     const curMacd = macdLine[i];
     const prevMacd = macdLine[i - 1];
     const curSignal = signalLine[i];
     const prevSignal = signalLine[i - 1];
 
-    if (curRsi === null || prevRsi === null) continue;
-
     if (position === 0) {
-      // Buy: RSI crosses above 30 (oversold exit) AND MACD golden cross
-      const rsiOversoldExit = prevRsi <= 30 && curRsi > 30;
+      // 매수: MACD 골든크로스 + 가격이 EMA 위 (상승추세)
       const macdGoldenCross = prevMacd <= prevSignal && curMacd > curSignal;
-      // Use OR for more signals — RSI oversold exit OR MACD golden cross (both conditions must be favorable)
-      if (rsiOversoldExit || (macdGoldenCross && curRsi < 50)) {
+      if (macdGoldenCross && close > ema[i]) {
         const cost = capital * (1 - commission);
         position = cost / close;
         entryPrice = close;
@@ -666,15 +631,11 @@ function runKISRsiMacd(
       const pnlPct = ((close - entryPrice) / entryPrice) * 100;
 
       let shouldSell = false;
-      // RSI overbought exit: RSI crosses below 70
-      const rsiOverboughtExit = prevRsi >= 70 && curRsi < 70;
-      // MACD dead cross
+      // MACD 데드크로스
       const macdDeadCross = prevMacd >= prevSignal && curMacd < curSignal;
-      if (rsiOverboughtExit || macdDeadCross) shouldSell = true;
-      // Stop loss
-      if (pnlPct <= -stopLoss) shouldSell = true;
-      // Take profit
-      if (pnlPct >= takeProfit) shouldSell = true;
+      if (macdDeadCross) shouldSell = true;
+      // 손절
+      if (stopLoss > 0 && pnlPct <= -stopLoss) shouldSell = true;
 
       if (shouldSell) {
         const proceeds = position * close * (1 - commission);
@@ -702,7 +663,6 @@ function runKISRsiMacd(
     capital = proceeds;
   }
 
-  // Determine asset name from prices context (will be overridden by caller)
   return computeStats(
     prices.slice(Math.max(startIdx - 1, 0)),
     equityCurve,
@@ -711,7 +671,7 @@ function runKISRsiMacd(
     capital,
     initialCapital,
     maxDD,
-    "KIS RSI/MACD Bot",
+    "KIS MACD Bot",
     "한국주식",
     "Yahoo Finance (실제 데이터)",
   );
@@ -722,7 +682,7 @@ function getBotDefaults(strategyId: string): string[] {
   switch (strategyId) {
     case "bot-seykota-ema": return ["100", "1.5", "14"];
     case "bot-ptj-200ma": return ["200", "1.5", "14"];
-    case "bot-kis-rsi-macd": return ["14", "12/26/9", "3"];
+    case "bot-kis-rsi-macd": return ["12/26/9", "20", "7"];
     default: return ["0.5", "80", "5"];
   }
 }
@@ -801,14 +761,14 @@ export default function BacktestPage() {
         if (prices.length < 50) throw new Error("Insufficient data");
 
         // Parse KIS params
-        const rsiPeriod = parseInt(paramValues[0]) || 14;
-        const macdParts = paramValues[1].split("/").map(Number);
+        const macdParts = paramValues[0].split("/").map(Number);
         const macdFast = macdParts[0] || 12;
         const macdSlow = macdParts[1] || 26;
         const macdSignal = macdParts[2] || 9;
-        const stopLoss = parseFloat(paramValues[2]) || 3;
+        const emaPeriod = parseInt(paramValues[1]) || 20;
+        const stopLoss = parseFloat(paramValues[2]) || 7;
 
-        const backResult = runKISRsiMacd(prices, rsiPeriod, macdFast, macdSlow, macdSignal, stopLoss, 5, 0.00015, capital);
+        const backResult = runKISRsiMacd(prices, macdFast, macdSlow, macdSignal, emaPeriod, stopLoss, 0.00015, capital);
         backResult.asset = krStock?.label || "삼성전자";
         backResult.dataSource = "Yahoo Finance (실제 데이터)";
         setResult(backResult);
