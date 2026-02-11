@@ -69,8 +69,8 @@ const STRATEGIES: Strategy[] = [
   {
     id: "bot-seykota-ema",
     name: "🤖 Seykota EMA Bot (빗썸)",
-    description: "EMA 15/150 추세추종 — 실제 가동 중",
-    params: ["Fast EMA", "Slow EMA", "손절 (%)"],
+    description: "EMA100 + ATR 동적밴드 추세추종 — 실제 가동 중",
+    params: ["EMA 기간", "ATR 배수", "ATR 기간"],
     isBotStrategy: true,
   },
   {
@@ -436,25 +436,25 @@ function calcRSI(closes: number[], period: number): (number | null)[] {
 }
 
 // --- Seykota EMA Bot ---
+// EMA + ATR 동적밴드 추세추종 전략 (Ed Seykota 스타일)
+// 매수: price > EMA + ATR*배수 (상승 추세 돌파)
+// 매도: price < EMA - ATR*배수 (하락 추세 돌파)
+// ATR 동적밴드로 변동성에 따라 진입/청산 기준 자동 조절
 function runSeykotaEMA(
   prices: PriceBar[],
-  fastPeriod: number = 15,
-  slowPeriod: number = 150,
-  stopLoss: number = 10,
-  trailingStop: number = 15,
-  trailingActivation: number = 5,
+  emaPeriod: number = 100,
+  atrMult: number = 1.5,
+  atrPeriod: number = 14,
   commission: number = 0.001,
   initialCapital: number = 10000000,
 ): BacktestResult {
   const closes = prices.map((p) => p.close);
-  const emaFast = calcEMA(closes, fastPeriod);
-  const emaSlow = calcEMA(closes, slowPeriod);
+  const ema = calcEMA(closes, emaPeriod);
+  const atr = calcATR(prices, atrPeriod);
 
   let capital = initialCapital;
-  let position = 0; // number of units held
+  let position = 0;
   let entryPrice = 0;
-  let peakSinceEntry = 0;
-  let trailingActive = false;
   const equityCurve: number[] = [100];
   const trades: { pnl: number; holdDays: number }[] = [];
   let peak = capital;
@@ -462,45 +462,24 @@ function runSeykotaEMA(
   const drawdownCurve: number[] = [0];
   let holdStart = 0;
 
-  for (let i = Math.max(slowPeriod, 1); i < prices.length; i++) {
+  const startIdx = emaPeriod;
+
+  for (let i = startIdx; i < prices.length; i++) {
     const close = closes[i];
-    const prevFast = emaFast[i - 1];
-    const prevSlow = emaSlow[i - 1];
-    const curFast = emaFast[i];
-    const curSlow = emaSlow[i];
+    const ma = ema[i];
+    const band = atr[i] * atrMult;
 
     if (position === 0) {
-      // Golden cross: fast crosses above slow
-      if (prevFast <= prevSlow && curFast > curSlow) {
+      // 매수: 가격이 EMA + ATR*배수 위로 돌파
+      if (close > ma + band) {
         const cost = capital * (1 - commission);
         position = cost / close;
         entryPrice = close;
-        peakSinceEntry = close;
-        trailingActive = false;
         holdStart = i;
       }
     } else {
-      // Update peak since entry
-      peakSinceEntry = Math.max(peakSinceEntry, close);
-      const pnlPct = ((close - entryPrice) / entryPrice) * 100;
-
-      // Check trailing activation
-      if (!trailingActive && pnlPct >= trailingActivation) {
-        trailingActive = true;
-      }
-
-      let shouldSell = false;
-      // Death cross
-      if (prevFast >= prevSlow && curFast < curSlow) shouldSell = true;
-      // Stop loss
-      if (pnlPct <= -stopLoss) shouldSell = true;
-      // Trailing stop (only if activated)
-      if (trailingActive) {
-        const dropFromPeak = ((peakSinceEntry - close) / peakSinceEntry) * 100;
-        if (dropFromPeak >= trailingStop) shouldSell = true;
-      }
-
-      if (shouldSell) {
+      // 매도: 가격이 EMA - ATR*배수 아래로 하락
+      if (close < ma - band) {
         const proceeds = position * close * (1 - commission);
         const tradePnl = ((close - entryPrice) / entryPrice) * 100;
         trades.push({ pnl: tradePnl, holdDays: i - holdStart });
@@ -509,7 +488,6 @@ function runSeykotaEMA(
       }
     }
 
-    // Track equity (mark to market)
     const equity = position > 0 ? position * close : capital;
     peak = Math.max(peak, equity);
     const dd = ((equity - peak) / peak) * 100;
@@ -525,13 +503,10 @@ function runSeykotaEMA(
     const tradePnl = ((lastClose - entryPrice) / entryPrice) * 100;
     trades.push({ pnl: tradePnl, holdDays: prices.length - holdStart });
     capital = proceeds;
-    position = 0;
-  } else {
-    // capital is already correct
   }
 
   return computeStats(
-    prices.slice(Math.max(slowPeriod - 1, 0)),
+    prices.slice(Math.max(startIdx - 1, 0)),
     equityCurve,
     drawdownCurve,
     trades,
@@ -745,7 +720,7 @@ function runKISRsiMacd(
 // --- Default param values per bot strategy ---
 function getBotDefaults(strategyId: string): string[] {
   switch (strategyId) {
-    case "bot-seykota-ema": return ["15", "150", "10"];
+    case "bot-seykota-ema": return ["100", "1.5", "14"];
     case "bot-ptj-200ma": return ["200", "1.5", "14"];
     case "bot-kis-rsi-macd": return ["14", "12/26/9", "3"];
     default: return ["0.5", "80", "5"];
@@ -853,7 +828,7 @@ export default function BacktestPage() {
       if (selectedStrategy === "bot-ptj-200ma") {
         warmupBars = (parseInt(paramValues[0]) || 200) + 10;
       } else if (selectedStrategy === "bot-seykota-ema") {
-        warmupBars = (parseInt(paramValues[1]) || 150) + 10;
+        warmupBars = (parseInt(paramValues[0]) || 100) + 10;
       }
       const totalBarsNeeded = daysDiff + warmupBars;
       const toTs = Math.floor(end.getTime() / 1000);
@@ -896,10 +871,10 @@ export default function BacktestPage() {
 
         switch (selectedStrategy) {
           case "bot-seykota-ema": {
-            const fast = parseInt(paramValues[0]) || 15;
-            const slow = parseInt(paramValues[1]) || 150;
-            const sl = parseFloat(paramValues[2]) || 10;
-            backResult = runSeykotaEMA(prices, fast, slow, sl, 15, 5, 0.001, capital);
+            const emaPeriod = parseInt(paramValues[0]) || 100;
+            const atrMult = parseFloat(paramValues[1]) || 1.5;
+            const atrPeriod = parseInt(paramValues[2]) || 14;
+            backResult = runSeykotaEMA(prices, emaPeriod, atrMult, atrPeriod, 0.001, capital);
             break;
           }
           case "bot-ptj-200ma": {
