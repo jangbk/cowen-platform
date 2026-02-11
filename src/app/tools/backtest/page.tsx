@@ -76,8 +76,8 @@ const STRATEGIES: Strategy[] = [
   {
     id: "bot-ptj-200ma",
     name: "🤖 PTJ 200MA Bot (코인원)",
-    description: "200MA + 50MA 모멘텀 — 실제 가동 중",
-    params: ["MA 기간", "확인 MA", "밴드 (%)"],
+    description: "EMA200 + ATR 동적밴드 추세추종 — 실제 가동 중",
+    params: ["EMA 기간", "ATR 배수", "ATR 기간"],
     isBotStrategy: true,
   },
   {
@@ -385,6 +385,25 @@ function calcSMA(closes: number[], period: number): (number | null)[] {
   return sma;
 }
 
+// --- ATR helper (Wilder's smoothing) ---
+function calcATR(prices: PriceBar[], period: number): number[] {
+  const atr: number[] = [];
+  atr[0] = prices[0].high - prices[0].low;
+  for (let i = 1; i < prices.length; i++) {
+    const tr = Math.max(
+      prices[i].high - prices[i].low,
+      Math.abs(prices[i].high - prices[i - 1].close),
+      Math.abs(prices[i].low - prices[i - 1].close),
+    );
+    if (i < period) {
+      atr[i] = atr[i - 1] + (tr - atr[i - 1]) / (i + 1);
+    } else {
+      atr[i] = atr[i - 1] * (period - 1) / period + tr / period;
+    }
+  }
+  return atr;
+}
+
 // --- RSI helper (Wilder's smoothing) ---
 function calcRSI(closes: number[], period: number): (number | null)[] {
   const rsi: (number | null)[] = new Array(closes.length).fill(null);
@@ -526,20 +545,21 @@ function runSeykotaEMA(
 }
 
 // --- PTJ 200MA Bot ---
-// 클래식 PTJ 전략: price > 200SMA면 롱, price < 200SMA면 청산
-// 밴드 필터로 200SMA 근처 휩소 방지, 50SMA>200SMA 골든크로스 확인
+// EMA200 + ATR 동적밴드 추세추종 전략
+// 매수: price > EMA200 + ATR*배수 (상승 추세 확인)
+// 매도: price < EMA200 - ATR*배수 (하락 추세 확인)
+// ATR 동적밴드로 변동성에 따라 진입/청산 기준 자동 조절
 function runPTJ200MA(
   prices: PriceBar[],
-  maPeriod: number = 200,
-  confirmMa: number = 50,
-  band: number = 1,
+  emaPeriod: number = 200,
+  atrMult: number = 1.5,
+  atrPeriod: number = 14,
   commission: number = 0.001,
   initialCapital: number = 10000000,
 ): BacktestResult {
   const closes = prices.map((p) => p.close);
-  const smaLong = calcSMA(closes, maPeriod);
-  const smaShort = calcSMA(closes, confirmMa);
-  const bandRatio = band / 100; // 1% → 0.01
+  const ema200 = calcEMA(closes, emaPeriod);
+  const atr = calcATR(prices, atrPeriod);
 
   let capital = initialCapital;
   let position = 0;
@@ -551,26 +571,24 @@ function runPTJ200MA(
   const drawdownCurve: number[] = [0];
   let holdStart = 0;
 
-  const startIdx = Math.max(maPeriod, confirmMa);
+  const startIdx = emaPeriod;
 
   for (let i = startIdx; i < prices.length; i++) {
     const close = closes[i];
-    const ma200 = smaLong[i];
-    const ma50 = smaShort[i];
-
-    if (ma200 === null || ma50 === null) continue;
+    const ma = ema200[i];
+    const band = atr[i] * atrMult;
 
     if (position === 0) {
-      // 매수: 가격이 200SMA*(1+밴드) 위 AND 50SMA > 200SMA (골든크로스)
-      if (close > ma200 * (1 + bandRatio) && ma50 > ma200) {
+      // 매수: 가격이 EMA200 + ATR*배수 위로 돌파
+      if (close > ma + band) {
         const cost = capital * (1 - commission);
         position = cost / close;
         entryPrice = close;
         holdStart = i;
       }
     } else {
-      // 매도: 가격이 200SMA*(1-밴드) 아래로 하락
-      if (close < ma200 * (1 - bandRatio)) {
+      // 매도: 가격이 EMA200 - ATR*배수 아래로 하락
+      if (close < ma - band) {
         const proceeds = position * close * (1 - commission);
         const tradePnl = ((close - entryPrice) / entryPrice) * 100;
         trades.push({ pnl: tradePnl, holdDays: i - holdStart });
@@ -728,7 +746,7 @@ function runKISRsiMacd(
 function getBotDefaults(strategyId: string): string[] {
   switch (strategyId) {
     case "bot-seykota-ema": return ["15", "150", "10"];
-    case "bot-ptj-200ma": return ["200", "50", "1"];
+    case "bot-ptj-200ma": return ["200", "1.5", "14"];
     case "bot-kis-rsi-macd": return ["14", "12/26/9", "3"];
     default: return ["0.5", "80", "5"];
   }
@@ -885,10 +903,10 @@ export default function BacktestPage() {
             break;
           }
           case "bot-ptj-200ma": {
-            const ma = parseInt(paramValues[0]) || 200;
-            const confirm = parseInt(paramValues[1]) || 50;
-            const bandPct = parseFloat(paramValues[2]) || 1;
-            backResult = runPTJ200MA(prices, ma, confirm, bandPct, 0.001, capital);
+            const emaPeriod = parseInt(paramValues[0]) || 200;
+            const atrMult = parseFloat(paramValues[1]) || 1.5;
+            const atrPeriod = parseInt(paramValues[2]) || 14;
+            backResult = runPTJ200MA(prices, emaPeriod, atrMult, atrPeriod, 0.001, capital);
             break;
           }
           default: {
