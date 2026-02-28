@@ -290,6 +290,34 @@ export default function ModernPortfolioTheoryPage() {
     setAssets(assets.filter((_, idx) => idx !== i));
   };
 
+  const normalizeAllocations = () => {
+    const total = assets.reduce((s, a) => s + a.allocation, 0);
+    if (total === 0 || total === 100) return;
+    setAssets(
+      assets.map((a, i, arr) => {
+        if (i < arr.length - 1) {
+          return { ...a, allocation: Math.round((a.allocation / total) * 100) };
+        }
+        // Last asset gets the remainder to ensure exactly 100
+        const sumSoFar = arr.slice(0, -1).reduce((s, x) => s + Math.round((x.allocation / total) * 100), 0);
+        return { ...a, allocation: 100 - sumSoFar };
+      })
+    );
+  };
+
+  const distributeEvenly = () => {
+    const count = assets.length;
+    if (count === 0) return;
+    const base = Math.floor(100 / count);
+    const remainder = 100 - base * count;
+    setAssets(
+      assets.map((a, i) => ({
+        ...a,
+        allocation: base + (i < remainder ? 1 : 0),
+      }))
+    );
+  };
+
   const updateAsset = (
     i: number,
     field: keyof Asset,
@@ -302,25 +330,44 @@ export default function ModernPortfolioTheoryPage() {
 
   // SVG scatter plot
   const svgWidth = 600;
-  const svgHeight = 400;
-  const pad = { top: 20, right: 20, bottom: 40, left: 50 };
+  const svgHeight = 440;
+  const pad = { top: 20, right: 20, bottom: 70, left: 55 };
   const plotW = svgWidth - pad.left - pad.right;
   const plotH = svgHeight - pad.top - pad.bottom;
 
   const allPoints = hasRun ? simResults : [];
-  const maxRisk = Math.max(
-    80,
-    ...allPoints.map((p) => p.risk),
-    currentMetrics.risk + 10
-  );
-  const maxRet = Math.max(
-    80,
-    ...allPoints.map((p) => p.ret),
-    currentMetrics.ret + 10
-  );
 
-  const toX = (risk: number) => pad.left + (risk / maxRisk) * plotW;
-  const toY = (ret: number) => pad.top + plotH - (ret / maxRet) * plotH;
+  // Dynamic axis range — use percentile-based range for robustness against outliers
+  const allRisks = [...allPoints.map((p) => p.risk), currentMetrics.risk];
+  const allRets = [...allPoints.map((p) => p.ret), currentMetrics.ret];
+
+  // Use 1st and 99th percentile to avoid outlier-driven stretching
+  const sortedRisks = [...allRisks].sort((a, b) => a - b);
+  const sortedRets = [...allRets].sort((a, b) => a - b);
+  const p1 = (arr: number[]) => arr[Math.floor(arr.length * 0.01)] ?? arr[0];
+  const p99 = (arr: number[]) => arr[Math.floor(arr.length * 0.99)] ?? arr[arr.length - 1];
+
+  const dataMinRisk = allRisks.length > 1 ? p1(sortedRisks) : 0;
+  const dataMaxRisk = allRisks.length > 1 ? p99(sortedRisks) : currentMetrics.risk + 20;
+  const dataMinRet = allRets.length > 1 ? p1(sortedRets) : 0;
+  const dataMaxRet = allRets.length > 1 ? p99(sortedRets) : currentMetrics.ret + 20;
+
+  // Ensure current portfolio & optimal points are always within range
+  const effectiveMaxRisk = Math.max(dataMaxRisk, currentMetrics.risk);
+  const effectiveMaxRet = Math.max(dataMaxRet, currentMetrics.ret);
+  const effectiveMinRisk = Math.min(dataMinRisk, currentMetrics.risk);
+  const effectiveMinRet = Math.min(dataMinRet, currentMetrics.ret);
+
+  const riskRange = effectiveMaxRisk - effectiveMinRisk || 20;
+  const retRange = effectiveMaxRet - effectiveMinRet || 20;
+
+  const minRisk = Math.max(0, effectiveMinRisk - riskRange * 0.08);
+  const maxRisk = effectiveMaxRisk + riskRange * 0.08;
+  const minRet = Math.max(0, effectiveMinRet - retRange * 0.08);
+  const maxRet = effectiveMaxRet + retRange * 0.08;
+
+  const toX = (risk: number) => pad.left + ((risk - minRisk) / (maxRisk - minRisk)) * plotW;
+  const toY = (ret: number) => pad.top + plotH - ((ret - minRet) / (maxRet - minRet)) * plotH;
 
   // Available presets (not yet added)
   const availablePresets = PRESET_ASSETS.filter(
@@ -596,14 +643,36 @@ export default function ModernPortfolioTheoryPage() {
             </div>
 
             <div
-              className={`mt-3 rounded-md p-2 text-xs text-center ${
+              className={`mt-3 rounded-md p-2 text-xs ${
                 totalAlloc === 100
                   ? "bg-green-500/10 text-green-500"
                   : "bg-red-500/10 text-red-500"
               }`}
             >
-              총 비중: {totalAlloc}%{" "}
-              {totalAlloc !== 100 && "(100%여야 합니다)"}
+              <div className="flex items-center justify-between">
+                <span>
+                  총 비중: {totalAlloc}%{" "}
+                  {totalAlloc === 100 ? "✓" : "(100%여야 합니다)"}
+                </span>
+                {totalAlloc !== 100 && (
+                  <button
+                    onClick={normalizeAllocations}
+                    className="rounded px-2 py-0.5 bg-primary/10 text-primary hover:bg-primary/20 font-medium transition-colors"
+                  >
+                    자동 맞추기
+                  </button>
+                )}
+              </div>
+              {totalAlloc !== 100 && (
+                <div className="flex gap-1.5 mt-1.5 justify-end">
+                  <button
+                    onClick={distributeEvenly}
+                    className="rounded px-2 py-0.5 bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                  >
+                    균등 분배
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-3 flex items-center gap-2">
@@ -684,7 +753,7 @@ export default function ModernPortfolioTheoryPage() {
                 {/* Grid */}
                 {[0, 1, 2, 3, 4].map((i) => {
                   const y = pad.top + (i / 4) * plotH;
-                  const val = maxRet - (i / 4) * maxRet;
+                  const val = maxRet - (i / 4) * (maxRet - minRet);
                   return (
                     <g key={`gy-${i}`}>
                       <line
@@ -710,7 +779,7 @@ export default function ModernPortfolioTheoryPage() {
                 })}
                 {[0, 1, 2, 3, 4].map((i) => {
                   const x = pad.left + (i / 4) * plotW;
-                  const val = (i / 4) * maxRisk;
+                  const val = minRisk + (i / 4) * (maxRisk - minRisk);
                   return (
                     <g key={`gx-${i}`}>
                       <line
@@ -724,7 +793,7 @@ export default function ModernPortfolioTheoryPage() {
                       />
                       <text
                         x={x}
-                        y={svgHeight - 10}
+                        y={pad.top + plotH + 18}
                         textAnchor="middle"
                         className="fill-muted-foreground"
                         fontSize="9"
@@ -735,13 +804,23 @@ export default function ModernPortfolioTheoryPage() {
                   );
                 })}
                 <text
-                  x={svgWidth / 2}
-                  y={svgHeight - 0}
+                  x={pad.left + plotW / 2}
+                  y={pad.top + plotH + 45}
                   textAnchor="middle"
                   className="fill-muted-foreground"
                   fontSize="10"
                 >
-                  리스크 (변동성)
+                  리스크 (변동성) →
+                </text>
+                <text
+                  x={14}
+                  y={pad.top + plotH / 2}
+                  textAnchor="middle"
+                  className="fill-muted-foreground"
+                  fontSize="10"
+                  transform={`rotate(-90, 14, ${pad.top + plotH / 2})`}
+                >
+                  ↑ 기대수익률
                 </text>
 
                 {/* Simulated points */}
@@ -967,6 +1046,76 @@ export default function ModernPortfolioTheoryPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Correlation Guide */}
+            <div className="mt-4 space-y-3">
+              {/* Color Legend */}
+              <div className="flex flex-wrap gap-3 text-xs">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded bg-red-500/15 border border-red-500/30" />
+                  <span className="text-muted-foreground">강한 양의 상관 (&gt;0.5)</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded bg-yellow-500/15 border border-yellow-500/30" />
+                  <span className="text-muted-foreground">약한 양의 상관 (0~0.5)</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded bg-green-500/15 border border-green-500/30" />
+                  <span className="text-muted-foreground">음의 상관 (&lt;0) — 분산 효과 큼</span>
+                </span>
+              </div>
+
+              {/* Interpretation */}
+              <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">해석 방법</p>
+                <ul className="text-xs text-muted-foreground space-y-1.5 pl-4 list-disc">
+                  <li><strong>+1.0</strong> = 완전히 같은 방향으로 움직임 (분산 효과 없음)</li>
+                  <li><strong>0.0</strong> = 서로 무관하게 움직임 (분산 효과 보통)</li>
+                  <li><strong>-1.0</strong> = 완전히 반대로 움직임 (분산 효과 최대)</li>
+                </ul>
+              </div>
+
+              {/* Real Examples */}
+              <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2.5">
+                <p className="text-xs font-semibold text-foreground">실제 예시로 이해하기</p>
+
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <div className="flex items-start gap-2">
+                    <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                    <div>
+                      <strong className="text-foreground">BTC ↔ ETH = 0.82</strong> (높은 양의 상관)
+                      <p className="mt-0.5">비트코인이 10% 오르면 이더리움도 비슷하게 오르는 경향. 둘 다 보유해도 리스크 분산 효과가 적습니다.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+                    <div>
+                      <strong className="text-foreground">BTC ↔ S&P 500 = 0.38</strong> (낮은 양의 상관)
+                      <p className="mt-0.5">비트코인이 오를 때 S&P 500도 약간 오르는 편이지만, 항상 같이 움직이진 않습니다. 어느 정도 분산 효과가 있습니다.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                    <div>
+                      <strong className="text-foreground">SOL ↔ 미국채 = -0.20</strong> (음의 상관)
+                      <p className="mt-0.5">솔라나가 하락할 때 미국 국채(AGG)는 오르는 경향. 함께 보유하면 한쪽 손실을 다른쪽이 상쇄해주어 <strong>포트폴리오 안정성이 크게 향상</strong>됩니다.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Practical Tip */}
+              <div className="rounded-md border border-primary/20 bg-primary/[0.03] p-3">
+                <p className="text-xs font-semibold text-foreground mb-1">💡 핵심 포인트</p>
+                <p className="text-xs text-muted-foreground">
+                  같은 색상(빨간색) 자산끼리만 모아두면 시장 하락 시 동시에 큰 손실을 볼 수 있습니다.
+                  <strong> 초록색(음의 상관) 조합</strong>을 포트폴리오에 포함하면 전체 변동성을 낮추면서도 수익률을 유지할 수 있습니다.
+                  예: 암호화폐(BTC, ETH) 70% + 미국 국채(AGG) 20% + 금(XAU) 10%
+                </p>
+              </div>
             </div>
           </div>
 

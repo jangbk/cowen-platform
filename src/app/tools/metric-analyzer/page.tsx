@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Layers, Loader2, Info, ChevronDown, AlertTriangle, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Layers, Loader2, Info, ChevronDown, AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
 
 const LightweightChartWrapper = dynamic(
   () => import("@/components/dashboard/LightweightChartWrapper"),
@@ -24,6 +25,7 @@ interface MetricDef {
   name: string;
   category: string;
   realData?: boolean; // true if computed from real price data
+  refUrl?: string; // URL to check live value manually
 }
 
 const METRICS: MetricDef[] = [
@@ -32,14 +34,14 @@ const METRICS: MetricDef[] = [
   { id: "macd", name: "MACD Histogram", category: "Technical", realData: true },
   { id: "bb-width", name: "Bollinger Band Width", category: "Technical", realData: true },
   { id: "volatility", name: "30D Volatility", category: "Technical", realData: true },
-  { id: "mvrv-z", name: "MVRV Z-Score", category: "On-Chain" },
-  { id: "nupl", name: "NUPL", category: "On-Chain" },
-  { id: "sopr", name: "SOPR", category: "On-Chain" },
-  { id: "reserve-risk", name: "Reserve Risk", category: "On-Chain" },
-  { id: "puell", name: "Puell Multiple", category: "On-Chain" },
-  { id: "fear-greed", name: "Fear & Greed", category: "Sentiment" },
-  { id: "funding", name: "Funding Rate", category: "Derivatives" },
-  { id: "dxy", name: "US Dollar Index", category: "Macro" },
+  { id: "mvrv-z", name: "MVRV Z-Score", category: "On-Chain", refUrl: "https://www.lookintobitcoin.com/charts/mvrv-zscore/" },
+  { id: "nupl", name: "NUPL", category: "On-Chain", refUrl: "https://www.lookintobitcoin.com/charts/relative-unrealized-profit--loss/" },
+  { id: "sopr", name: "SOPR", category: "On-Chain", refUrl: "https://www.coinglass.com/pro/i/sopr" },
+  { id: "reserve-risk", name: "Reserve Risk", category: "On-Chain", refUrl: "https://www.lookintobitcoin.com/charts/reserve-risk/" },
+  { id: "puell", name: "Puell Multiple", category: "On-Chain", refUrl: "https://www.lookintobitcoin.com/charts/puell-multiple/" },
+  { id: "fear-greed", name: "Fear & Greed", category: "Sentiment", refUrl: "https://alternative.me/crypto/fear-and-greed-index/" },
+  { id: "funding", name: "Funding Rate", category: "Derivatives", refUrl: "https://www.coinglass.com/FundingRate" },
+  { id: "dxy", name: "US Dollar Index", category: "Macro", refUrl: "https://www.tradingview.com/symbols/TVC-DXY/" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -147,6 +149,32 @@ function generateMetricData(
   return data;
 }
 
+// Mapping: metric-analyzer id → weighted-risk metric name
+const METRIC_TO_RISK_NAME: Record<string, string> = {
+  "mvrv-z": "MVRV Z-Score",
+  "nupl": "NUPL",
+  "sopr": "SOPR",
+  "reserve-risk": "Reserve Risk",
+  "puell": "Puell Multiple",
+};
+
+// Read weighted-risk manual input value from localStorage
+function getWeightedRiskValue(metricId: string): number | null {
+  if (typeof window === "undefined") return null;
+  const riskName = METRIC_TO_RISK_NAME[metricId];
+  if (!riskName) return null;
+  try {
+    const raw = localStorage.getItem("weighted-risk-metrics");
+    if (!raw) return null;
+    const metrics: Array<{ name: string; value: number; live?: boolean }> = JSON.parse(raw);
+    const found = metrics.find((m) => m.name === riskName);
+    if (!found || found.live) return null; // skip live-fetched values
+    return found.value;
+  } catch {
+    return null;
+  }
+}
+
 // Moving average
 function sma(data: number[], period: number): (number | null)[] {
   return data.map((_, i) => {
@@ -220,6 +248,9 @@ export default function MetricAnalyzerPage() {
   const [loading, setLoading] = useState(true);
   const [dataSource, setDataSource] = useState("");
 
+  // Manual values from weighted-risk page (localStorage)
+  const [manualValues, setManualValues] = useState<Record<string, number>>({});
+
   const fetchRealData = useCallback(() => {
     setLoading(true);
     const now = new Date();
@@ -246,6 +277,16 @@ export default function MetricAnalyzerPage() {
     fetchRealData();
   }, [fetchRealData]);
 
+  // Load manual values from weighted-risk localStorage
+  useEffect(() => {
+    const values: Record<string, number> = {};
+    for (const metricId of Object.keys(METRIC_TO_RISK_NAME)) {
+      const val = getWeightedRiskValue(metricId);
+      if (val !== null) values[metricId] = val;
+    }
+    setManualValues(values);
+  }, []);
+
   // Compute derived metrics from real price data
   const derivedMetrics = useMemo(() => {
     if (realPrices.length === 0) return {};
@@ -270,19 +311,30 @@ export default function MetricAnalyzerPage() {
     } as Record<string, Array<{ time: string; value: number }>>;
   }, [realPrices]);
 
-  // Get metric data — real if available, simulated otherwise
+  // Get metric data — real if available, manual from weighted-risk, or simulated
   const getMetricData = useCallback(
     (metricId: string): Array<{ time: string; value: number }> => {
       if (derivedMetrics[metricId]) return derivedMetrics[metricId];
-      return generateMetricData(metricId, lookbackDays);
+      const simData = generateMetricData(metricId, lookbackDays);
+      // If weighted-risk has a manual value, replace the last data point
+      if (manualValues[metricId] !== undefined) {
+        const updated = [...simData];
+        if (updated.length > 0) {
+          updated[updated.length - 1] = { ...updated[updated.length - 1], value: manualValues[metricId] };
+        }
+        return updated;
+      }
+      return simData;
     },
-    [derivedMetrics, lookbackDays]
+    [derivedMetrics, lookbackDays, manualValues]
   );
 
-  const primaryName = METRICS.find((m) => m.id === primaryMetric)?.name || primaryMetric;
-  const compareName = METRICS.find((m) => m.id === compareMetric)?.name || compareMetric;
-  const primaryIsReal = METRICS.find((m) => m.id === primaryMetric)?.realData;
-  const compareIsReal = METRICS.find((m) => m.id === compareMetric)?.realData;
+  const primaryDef = METRICS.find((m) => m.id === primaryMetric);
+  const compareDef = METRICS.find((m) => m.id === compareMetric);
+  const primaryName = primaryDef?.name || primaryMetric;
+  const compareName = compareDef?.name || compareMetric;
+  const primaryIsReal = primaryDef?.realData;
+  const compareIsReal = compareDef?.realData;
 
   const primaryData = useMemo(() => getMetricData(primaryMetric), [primaryMetric, getMetricData]);
   const compareData = useMemo(() => getMetricData(compareMetric), [compareMetric, getMetricData]);
@@ -461,23 +513,40 @@ export default function MetricAnalyzerPage() {
           <input type="number" value={slowPeriod} onChange={(e) => setSlowPeriod(parseInt(e.target.value) || 30)} className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-xs" />
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
-          <label className="text-[10px] text-muted-foreground">Lookback (일)</label>
+          <label className="text-[10px] text-muted-foreground">Lookback (기간)</label>
           <select value={lookbackDays} onChange={(e) => setLookbackDays(parseInt(e.target.value))} className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-xs">
+            <option value="90">3개월</option>
+            <option value="180">6개월</option>
             <option value="365">1년</option>
             <option value="730">2년</option>
-            <option value="1460">4년</option>
+            <option value="1095">3년</option>
+            <option value="1460">4년 (1 사이클)</option>
           </select>
         </div>
       </div>
 
       {/* Data source legend */}
-      <div className="text-[10px] text-muted-foreground flex items-center gap-3">
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> * 실제 데이터 (BTC 가격 기반 계산)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" /> 시뮬레이션 데이터 (온체인/매크로)
-        </span>
+      <div className="text-[10px] text-muted-foreground space-y-1">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> * 실제 데이터 (BTC 가격 기반 계산)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" /> 수동입력 (Weighted Risk에서 입력)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" /> 시뮬레이션 데이터 (온체인/매크로)
+          </span>
+        </div>
+        {Object.keys(manualValues).length === 0 && (
+          <p className="text-muted-foreground/70">
+            온체인 지표를 직접 입력하려면{" "}
+            <Link href="/tools/weighted-risk" className="text-blue-500 hover:text-blue-400 underline underline-offset-2">
+              Weighted Risk Assessment
+            </Link>
+            {" "}페이지에서 입력하세요. 입력된 값은 이 페이지에 자동 반영됩니다.
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -521,8 +590,20 @@ export default function MetricAnalyzerPage() {
               <h3 className="text-sm font-semibold">{primaryName}</h3>
               {primaryIsReal ? (
                 <span className="rounded-full bg-green-500/10 text-green-500 px-2 py-0.5 text-[10px] font-medium">실제 데이터</span>
+              ) : manualValues[primaryMetric] !== undefined ? (
+                <Link href="/tools/weighted-risk" className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 text-blue-500 px-2 py-0.5 text-[10px] font-medium hover:bg-blue-500/20 transition-colors">
+                  수동입력 ({manualValues[primaryMetric]})
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
               ) : (
-                <span className="rounded-full bg-yellow-500/10 text-yellow-500 px-2 py-0.5 text-[10px] font-medium">시뮬레이션</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 text-yellow-500 px-2 py-0.5 text-[10px] font-medium">
+                  시뮬레이션
+                  {primaryDef?.refUrl && (
+                    <a href={primaryDef.refUrl} target="_blank" rel="noopener noreferrer" title="실시간 데이터 확인" className="hover:text-yellow-400">
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </span>
               )}
             </div>
             <LightweightChartWrapper
@@ -540,8 +621,20 @@ export default function MetricAnalyzerPage() {
               <h3 className="text-sm font-semibold">{compareName}</h3>
               {compareIsReal ? (
                 <span className="rounded-full bg-green-500/10 text-green-500 px-2 py-0.5 text-[10px] font-medium">실제 데이터</span>
+              ) : manualValues[compareMetric] !== undefined ? (
+                <Link href="/tools/weighted-risk" className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 text-blue-500 px-2 py-0.5 text-[10px] font-medium hover:bg-blue-500/20 transition-colors">
+                  수동입력 ({manualValues[compareMetric]})
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
               ) : (
-                <span className="rounded-full bg-yellow-500/10 text-yellow-500 px-2 py-0.5 text-[10px] font-medium">시뮬레이션</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 text-yellow-500 px-2 py-0.5 text-[10px] font-medium">
+                  시뮬레이션
+                  {compareDef?.refUrl && (
+                    <a href={compareDef.refUrl} target="_blank" rel="noopener noreferrer" title="실시간 데이터 확인" className="hover:text-yellow-400">
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </span>
               )}
             </div>
             <LightweightChartWrapper
@@ -644,6 +737,7 @@ export default function MetricAnalyzerPage() {
                     <th className="px-3 py-2 text-right font-medium text-muted-foreground">상관관계</th>
                     <th className="px-3 py-2 text-center font-medium text-muted-foreground">강도</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">카테고리</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">현재값</th>
                     <th className="px-3 py-2 text-center font-medium text-muted-foreground">데이터</th>
                   </tr>
                 </thead>
@@ -653,7 +747,7 @@ export default function MetricAnalyzerPage() {
                       const data1 = getMetricData(m.id);
                       const data2 = getMetricData(compareMetric);
                       const n = Math.min(data1.length, data2.length);
-                      if (n < 10) return { ...m, corr: 0 };
+                      if (n < 10) return { ...m, corr: 0, latestValue: data1.length > 0 ? data1[data1.length - 1].value : null };
                       const x = data1.slice(-n).map((d) => d.value);
                       const y = data2.slice(-n).map((d) => d.value);
                       const xm = x.reduce((s, v) => s + v, 0) / n;
@@ -665,7 +759,8 @@ export default function MetricAnalyzerPage() {
                         dy2 += (y[i] - ym) ** 2;
                       }
                       const corr2 = Math.sqrt(dx2 * dy2) > 0 ? num2 / Math.sqrt(dx2 * dy2) : 0;
-                      return { ...m, corr: corr2 };
+                      const latestValue = data1.length > 0 ? data1[data1.length - 1].value : null;
+                      return { ...m, corr: corr2, latestValue };
                     })
                     .sort((a, b) => Math.abs(b.corr) - Math.abs(a.corr))
                     .map((row) => (
@@ -688,11 +783,42 @@ export default function MetricAnalyzerPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2 text-muted-foreground">{row.category}</td>
+                        <td className="px-3 py-2 text-right font-mono text-muted-foreground">
+                          {row.latestValue !== null ? (
+                            Math.abs(row.latestValue) >= 1000
+                              ? row.latestValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                              : Math.abs(row.latestValue) >= 1
+                                ? row.latestValue.toFixed(2)
+                                : row.latestValue.toFixed(4)
+                          ) : "—"}
+                        </td>
                         <td className="px-3 py-2 text-center">
                           {row.realData ? (
                             <span className="text-green-500 text-[10px]">Real</span>
+                          ) : manualValues[row.id] !== undefined ? (
+                            <Link
+                              href="/tools/weighted-risk"
+                              className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-400 transition-colors"
+                              title="Weighted Risk에서 입력된 값"
+                            >
+                              <span className="text-[10px]">수동</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
                           ) : (
-                            <span className="text-yellow-500 text-[10px]">Sim</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-yellow-500 text-[10px]">Sim</span>
+                              {row.refUrl && (
+                                <a
+                                  href={row.refUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-yellow-500 hover:text-yellow-400 transition-colors"
+                                  title={`${row.name} 실시간 확인`}
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </span>
                           )}
                         </td>
                       </tr>

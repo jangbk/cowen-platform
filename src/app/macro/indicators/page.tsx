@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  Globe, TrendingUp, TrendingDown, Minus, Loader2, Info,
+  Globe, TrendingUp, TrendingDown, Minus, Loader2,
   BarChart3, Shield, Lightbulb, AlertTriangle, Activity,
 } from "lucide-react";
 import GaugeChart from "@/components/ui/GaugeChart";
@@ -67,6 +67,24 @@ function getYoYChange(data: { date: string; value: string }[]): { current: numbe
 }
 
 // ---------------------------------------------------------------------------
+// Risk Asset Friendliness Assessment (5-axis scoring)
+// ---------------------------------------------------------------------------
+interface RiskAxisScore {
+  axis: string;
+  score: number; // -2 (very negative) to +2 (very positive)
+  label: string;
+  evidence: string;
+  color: string;
+}
+
+interface GuideItem {
+  title: string;
+  content: string;
+  color: string;
+  evidence: string[]; // specific data points backing this claim
+}
+
+// ---------------------------------------------------------------------------
 // Dynamic Analysis Generator
 // ---------------------------------------------------------------------------
 function generateMacroAnalysis(
@@ -99,6 +117,157 @@ function generateMacroAnalysis(
     contraction: { emoji: "🔴", title: "경기 침체 경고 — 방어적 포지션 필요", color: "red" },
   };
   const sentiment = sentimentMap[level];
+
+  // =====================================================================
+  // 5-Axis Risk Asset Friendliness Score
+  // Each axis: -2 (very negative) to +2 (very positive) for risk assets
+  // =====================================================================
+  const riskAxes: RiskAxisScore[] = [];
+
+  // 1. Liquidity / Monetary Policy
+  if (fedRate) {
+    const rateV = fedRate.value;
+    let score: number;
+    let label: string;
+    let evidence: string;
+    if (rateV < 1.5) {
+      score = 2; label = "매우 우호적";
+      evidence = `기준금리 ${fedRate.displayValue}: 초저금리로 풍부한 유동성. 위험자산 선호 극대화.`;
+    } else if (rateV < 3.0) {
+      score = 1; label = "우호적";
+      evidence = `기준금리 ${fedRate.displayValue}: 완화적 금리 수준. 유동성 환경 양호.`;
+    } else if (rateV < 4.5) {
+      score = 0; label = "중립";
+      evidence = `기준금리 ${fedRate.displayValue}: 중립적 수준.${fedRate.trend === "down" ? " 인하 추세로 개선 기대." : fedRate.trend === "up" ? " 인상 추세로 긴축 우려." : ""}`;
+    } else if (rateV < 5.5) {
+      score = -1; label = "비우호적";
+      evidence = `기준금리 ${fedRate.displayValue}: 높은 금리로 유동성 제한. 차입 비용 증가가 위험자산 투자 매력을 감소시킴.${fedRate.trend === "down" ? " 다만 인하 추세가 향후 개선을 시사." : ""}`;
+    } else {
+      score = -2; label = "매우 비우호적";
+      evidence = `기준금리 ${fedRate.displayValue}: 극도로 높은 금리. 유동성 급격히 위축. 위험자산에 강한 역풍.`;
+    }
+    riskAxes.push({ axis: "유동성/금리", score, label, evidence, color: score >= 1 ? "#10b981" : score <= -1 ? "#ef4444" : "#eab308" });
+  }
+
+  // 2. Inflation
+  if (cpi) {
+    const cpiV = cpi.value;
+    let score: number;
+    let label: string;
+    let evidence: string;
+    if (cpiV < 2.0) {
+      score = 1; label = "우호적";
+      evidence = `CPI YoY ${cpi.displayValue}: 목표 이하 물가. 금리 인하 여력 확대 → 유동성 기대.`;
+    } else if (cpiV < 2.8) {
+      score = 2; label = "매우 우호적";
+      evidence = `CPI YoY ${cpi.displayValue}: 목표 근접한 안정적 물가. 금리 인하 가능성↑, 경기 과열 우려 없음. 위험자산에 최적 구간.`;
+    } else if (cpiV < 3.5) {
+      score = 0; label = "중립";
+      evidence = `CPI YoY ${cpi.displayValue}: 다소 높은 물가. 연준 추가 긴축 가능성 잔존.${cpi.trend === "down" ? " 하락 추세가 긍정적." : ""}`;
+    } else if (cpiV < 5.0) {
+      score = -1; label = "비우호적";
+      evidence = `CPI YoY ${cpi.displayValue}: 높은 인플레이션으로 연준 긴축 기조 유지. 금리 인하 지연 → 유동성 축소.`;
+    } else {
+      score = -2; label = "매우 비우호적";
+      evidence = `CPI YoY ${cpi.displayValue}: 극심한 인플레이션. 연준의 공격적 긴축 불가피. 위험자산 대규모 매도 압력.`;
+    }
+    riskAxes.push({ axis: "인플레이션", score, label, evidence, color: score >= 1 ? "#10b981" : score <= -1 ? "#ef4444" : "#eab308" });
+  }
+
+  // 3. Growth / Economy
+  if (gdp) {
+    const gdpV = gdp.value;
+    let score: number;
+    let label: string;
+    let evidence: string;
+    if (gdpV > 3.0) {
+      score = 1; label = "우호적";
+      evidence = `GDP ${gdp.displayValue}: 강한 성장. 기업 실적 양호 기대.${gdpV > 4.5 ? " 다만 과열 우려로 긴축 압력 가능." : ""}`;
+    } else if (gdpV > 1.5) {
+      score = 2; label = "매우 우호적";
+      evidence = `GDP ${gdp.displayValue}: 건실한 성장과 안정의 골디락스 구간. 기업 실적 성장 + 과열 부담 없음.`;
+    } else if (gdpV > 0) {
+      score = 0; label = "중립";
+      evidence = `GDP ${gdp.displayValue}: 저성장 국면. 경기 방향성 불투명.${gdp.trend === "down" ? " 둔화 추세 주의." : ""}`;
+    } else if (gdpV > -1.5) {
+      score = -1; label = "비우호적";
+      evidence = `GDP ${gdp.displayValue}: 마이너스 성장. 기업 실적 악화 → 위험자산 하방 압력. 2분기 연속 시 기술적 침체.`;
+    } else {
+      score = -2; label = "매우 비우호적";
+      evidence = `GDP ${gdp.displayValue}: 심각한 경기 수축. 위험자산에서 안전자산으로 대규모 자금 이탈.`;
+    }
+    riskAxes.push({ axis: "경제 성장", score, label, evidence, color: score >= 1 ? "#10b981" : score <= -1 ? "#ef4444" : "#eab308" });
+  }
+
+  // 4. Market Risk Appetite
+  if (vix) {
+    const vixV = vix.value;
+    let score: number;
+    let label: string;
+    let evidence: string;
+    if (vixV < 13) {
+      score = 1; label = "우호적 (과열 주의)";
+      evidence = `VIX ${vix.displayValue}: 극도로 낮은 변동성. 시장 안도감 높으나 과잉 낙관 상태 — 돌발 이벤트에 취약.`;
+    } else if (vixV < 18) {
+      score = 2; label = "매우 우호적";
+      evidence = `VIX ${vix.displayValue}: 낮은 변동성. 시장 리스크 선호 구간. 위험자산 투자심리 양호.`;
+    } else if (vixV < 25) {
+      score = 0; label = "중립";
+      evidence = `VIX ${vix.displayValue}: 정상 범위 변동성. 특별한 공포/탐욕 없이 시장이 방향을 탐색 중.`;
+    } else if (vixV < 35) {
+      score = -1; label = "비우호적";
+      evidence = `VIX ${vix.displayValue}: 높은 변동성. 시장 불안 심리 확대 → 위험자산 매도 압력. 단, VIX 30+ 구간은 역사적 매수 기회와 겹침.`;
+    } else {
+      score = -2; label = "매우 비우호적";
+      evidence = `VIX ${vix.displayValue}: 극단적 공포. 패닉 매도 구간. 단기적으로 위험자산 급락 가능, 중기적으로 바닥 형성 신호.`;
+    }
+    riskAxes.push({ axis: "시장 변동성", score, label, evidence, color: score >= 1 ? "#10b981" : score <= -1 ? "#ef4444" : "#eab308" });
+  }
+
+  // 5. Labor Market
+  if (unemp) {
+    const unempV = unemp.value;
+    let score: number;
+    let label: string;
+    let evidence: string;
+    if (unempV < 3.8) {
+      score = 2; label = "매우 우호적";
+      evidence = `실업률 ${unemp.displayValue}: 완전고용. 소비 견조 → 기업 매출 지지. 다만 임금 상승 → 인플레 재가속 리스크.`;
+    } else if (unempV < 4.5) {
+      score = 1; label = "우호적";
+      evidence = `실업률 ${unemp.displayValue}: 건전한 노동시장. 소비 여력 유지.${unemp.trend === "up" ? " 상승 추세 모니터링 필요." : ""}`;
+    } else if (unempV < 5.5) {
+      score = 0; label = "중립";
+      evidence = `실업률 ${unemp.displayValue}: 다소 높은 수준.${unemp.trend === "up" ? " 상승 추세가 소비 위축으로 이어질 수 있음." : " 안정세."}`;
+    } else if (unempV < 7.0) {
+      score = -1; label = "비우호적";
+      evidence = `실업률 ${unemp.displayValue}: 노동시장 악화. 소비 위축 → 기업 실적 하방 → 위험자산 하락 압력.`;
+    } else {
+      score = -2; label = "매우 비우호적";
+      evidence = `실업률 ${unemp.displayValue}: 심각한 고용 위기. 경기침체 구간의 전형적 수준.`;
+    }
+    riskAxes.push({ axis: "노동시장", score, label, evidence, color: score >= 1 ? "#10b981" : score <= -1 ? "#ef4444" : "#eab308" });
+  }
+
+  // Calculate overall risk asset friendliness
+  const totalScore = riskAxes.reduce((s, a) => s + a.score, 0);
+  const maxPossible = riskAxes.length * 2;
+  const riskFriendliness = maxPossible > 0 ? (totalScore + maxPossible) / (maxPossible * 2) : 0.5; // 0~1
+
+  let riskAssetVerdict: { label: string; emoji: string; color: string; summary: string };
+  if (riskFriendliness >= 0.75) {
+    riskAssetVerdict = { label: "우호적", emoji: "🟢", color: "green",
+      summary: "대부분의 거시 지표가 위험자산(주식·크립토)에 유리한 환경을 나타냅니다." };
+  } else if (riskFriendliness >= 0.55) {
+    riskAssetVerdict = { label: "조건부 우호적", emoji: "🟡", color: "yellow",
+      summary: "일부 우호적 요인이 있으나, 비우호적 요인도 공존합니다. 선별적 접근 필요." };
+  } else if (riskFriendliness >= 0.4) {
+    riskAssetVerdict = { label: "중립/혼조", emoji: "🟠", color: "orange",
+      summary: "우호적 요인과 비우호적 요인이 상충합니다. 방향성 판단이 어려운 구간." };
+  } else {
+    riskAssetVerdict = { label: "비우호적", emoji: "🔴", color: "red",
+      summary: "다수의 지표가 위험자산에 역풍을 나타냅니다. 방어적 포지션 권장." };
+  }
 
   // --- Paragraphs ---
   const parts: string[] = [];
@@ -142,56 +311,148 @@ function generateMacroAnalysis(
     parts.push(`10년 국채금리 ${t10y.displayValue}${t10y.trend === "down" ? "(하락 추세)" : t10y.trend === "up" ? "(상승 추세)" : ""}, VIX ${vix.displayValue}${vix.value > 25 ? "(높은 변동성 — 시장 불안)" : vix.value < 15 ? "(낮은 변동성 — 과도한 안일)" : "(정상 범위)"}. ${sp500 ? `S&P 500 ${sp500.displayValue}(${sp500.trend === "up" ? "상승세" : "하락세"}).` : ""}`);
   }
 
-  // --- Investment Guide ---
-  const guide: { title: string; content: string; color: string }[] = [];
+  // --- Investment Guide (data-driven with evidence) ---
+  const guide: GuideItem[] = [];
 
+  // Determine conditions more precisely
+  const isLowRate = fedRate && fedRate.value < 3.0;
+  const isHighRate = fedRate && fedRate.value >= 4.5;
+  const isRateCutting = fedRate && fedRate.trend === "down";
+  const isLowInflation = cpi && cpi.value < 2.8;
+  const isHighInflation = cpi && cpi.value > 3.5;
+  const isStrongGrowth = gdp && gdp.value > 2.0;
+  const isWeakGrowth = gdp && gdp.value < 1.0;
+  const isNegativeGrowth = gdp && gdp.value < 0;
+  const isLowVix = vix && vix.value < 20;
+  const isHighVix = vix && vix.value > 25;
+  const isLowUnemp = unemp && unemp.value < 4.5;
+  const realRate = (fedRate && cpi) ? fedRate.value - cpi.value : null;
+
+  // Stock & Risk Asset Guide
   if (recessionRisk <= 0.2) {
+    const evidence: string[] = [];
+    if (isStrongGrowth) evidence.push(`GDP ${gdp!.displayValue} → 기업 실적 성장 지지`);
+    if (isLowUnemp) evidence.push(`실업률 ${unemp!.displayValue} → 소비 견조`);
+    if (isLowVix) evidence.push(`VIX ${vix!.displayValue} → 시장 안정`);
+    if (sp500 && sp500.trend === "up") evidence.push(`S&P 500 상승세 → 모멘텀 유지`);
+    if (isHighRate) evidence.push(`⚠ 기준금리 ${fedRate!.displayValue} → 높은 차입비용은 부담 요인`);
+    if (isHighInflation) evidence.push(`⚠ CPI ${cpi!.displayValue} → 인플레이션 재가속 시 긴축 연장 리스크`);
+
     guide.push({
       title: "주식 & 위험자산",
-      content: `경기 확장 구간으로 위험자산에 우호적입니다. ${vix && vix.value < 18 ? "VIX가 낮아 시장 안도감이 높으나, 갑작스러운 변동성 급등에 대비하세요." : ""} 주식 비중을 유지하되, ${cpi && cpi.value > 3 ? "인플레이션 헤지를 위해 원자재/TIPS 비중을 고려하세요." : "성장주와 기술주에 기회가 있습니다."}`,
-      color: "green",
-    });
-    guide.push({
-      title: "채권 & 안전자산",
-      content: `${fedRate && fedRate.trend === "down" ? "금리 인하 사이클에서 채권 가격 상승이 기대됩니다. 장기채 비중을 늘리는 것을 고려하세요." : t10y ? `10년 금리 ${t10y.displayValue}로 ${parseFloat(t10y.displayValue) > 4 ? "채권 수익률이 매력적입니다. 분할 매수 구간." : "채권은 포트폴리오 안정화 목적으로 유지하세요."}` : "채권 배분을 포트폴리오의 20~30%로 유지하세요."}`,
-      color: "blue",
-    });
-    guide.push({
-      title: "암호화폐 시사점",
-      content: `거시경제 환경이 위험자산에 우호적입니다. ${fedRate && fedRate.trend === "down" ? "유동성 증가 기대감으로 크립토에 긍정적." : "그러나 높은 금리는 유동성을 제한하므로 선별적 접근이 필요합니다."} 매크로 침체 없이 유동성이 풀리는 구간은 역사적으로 크립토 강세장과 일치합니다.`,
-      color: "green",
+      content: `경기 확장 구간으로 전반적으로 위험자산에 긍정적이나, ${isHighRate ? "높은 금리 환경은 밸류에이션 부담을 줍니다. 고성장 기술주보다 실적 기반 가치주/배당주의 상대적 매력이 높습니다." : isLowRate ? "저금리 환경에서 성장주와 기술주에 기회가 있습니다." : "금리 수준을 고려해 섹터별 선별 투자가 중요합니다."} ${vix && vix.value < 15 ? "VIX가 매우 낮아 과도한 안일감에 주의하세요 — 갑작스러운 변동성 급등 가능." : ""} ${cpi && cpi.value > 3 ? "인플레이션 헤지를 위해 원자재, 에너지, TIPS 비중을 고려하세요." : ""}`,
+      color: "green", evidence,
     });
   } else if (recessionRisk <= 0.4) {
+    const evidence: string[] = [];
+    evidence.push(`경기침체 확률 ${(recessionRisk * 100).toFixed(0)}% → 둔화 신호`);
+    if (isWeakGrowth) evidence.push(`GDP ${gdp!.displayValue} → 성장 둔화`);
+    if (unemp && unemp.trend === "up") evidence.push(`실업률 ${unemp.displayValue} 상승 추세 → 소비 위축 우려`);
+    if (isHighVix) evidence.push(`VIX ${vix!.displayValue} → 시장 불안 확대`);
+    if (isRateCutting) evidence.push(`금리 인하 추세 → 향후 유동성 개선 기대`);
+
     guide.push({
       title: "주식 & 위험자산",
-      content: `경기 둔화 조짐으로 방어주(헬스케어, 유틸리티, 필수소비재) 비중을 확대하세요. ${vix && vix.value > 25 ? "VIX가 높아 단기 변동성이 예상됩니다. " : ""}성장주보다 가치주와 배당주가 유리한 구간입니다.`,
-      color: "yellow",
-    });
-    guide.push({
-      title: "채권 & 안전자산",
-      content: `경기침체 우려 시 안전자산 수요가 증가합니다. 국채와 금 비중을 30~40%로 확대하세요. ${t10y && parseFloat(t10y.displayValue) > 4 ? "현재 금리 수준에서 장기채 매수는 침체 시 큰 자본이익을 제공할 수 있습니다." : ""}`,
-      color: "blue",
-    });
-    guide.push({
-      title: "암호화폐 시사점",
-      content: `거시 불확실성이 높은 구간으로 크립토 포지션을 보수적으로 운영하세요. 경기침체가 현실화되면 위험자산 전반의 매도 압력이 크립토에도 영향을 미칩니다. ${fedRate && fedRate.trend === "down" ? "다만 금리 인하가 시작되면 유동성 기대감으로 반등 가능." : ""}`,
-      color: "yellow",
+      content: `경기 둔화 조짐으로 방어주(헬스케어, 유틸리티, 필수소비재) 비중을 확대하세요. ${isHighVix ? "VIX가 높아 단기 변동성이 예상됩니다. " : ""}성장주보다 가치주와 배당주가 유리한 구간입니다. 현금 비중을 20~30%로 높여 하락 시 매수 기회에 대비하세요.`,
+      color: "yellow", evidence,
     });
   } else {
+    const evidence: string[] = [];
+    evidence.push(`경기침체 확률 ${(recessionRisk * 100).toFixed(0)}% → 침체 경고`);
+    if (isNegativeGrowth) evidence.push(`GDP ${gdp!.displayValue} → 마이너스 성장`);
+    if (unemp && unemp.value > 5) evidence.push(`실업률 ${unemp.displayValue} → 노동시장 악화`);
+    if (isHighVix) evidence.push(`VIX ${vix!.displayValue} → 극심한 변동성`);
+
     guide.push({
       title: "주식 & 위험자산",
-      content: `경기침체 리스크가 높습니다. 주식 비중을 최소화하고 현금 비중을 40% 이상 확보하세요. ${sp500 ? `S&P 500이 추가 하락할 경우를 대비해 헤지 전략(풋옵션, 인버스 ETF)을 고려하세요.` : "방어적 섹터 외에는 관망을 권장합니다."}`,
-      color: "red",
+      content: `경기침체 리스크가 높습니다. 주식 비중을 최소화하고 현금 비중을 40% 이상 확보하세요. ${sp500 ? "S&P 500 추가 하락 대비 헤지 전략(풋옵션, 인버스 ETF)을 고려하세요." : "방어적 섹터 외에는 관망을 권장합니다."} 역사적으로 S&P 500은 침체기에 평균 30~35% 하락했습니다.`,
+      color: "red", evidence,
     });
+  }
+
+  // Bond & Safe Haven Guide
+  {
+    const evidence: string[] = [];
+    if (t10y) evidence.push(`10년 국채금리 ${t10y.displayValue}${t10y.trend === "down" ? " (하락 추세)" : t10y.trend === "up" ? " (상승 추세)" : ""}`);
+    if (realRate !== null) evidence.push(`실질금리 ${realRate >= 0 ? "+" : ""}${realRate.toFixed(1)}%p ${realRate > 1.5 ? "→ 채권 실질수익 매력적" : realRate > 0 ? "→ 양(+)의 실질수익" : "→ 실질 마이너스 수익"}`);
+    if (isRateCutting) evidence.push("금리 인하 추세 → 채권 가격 상승 기대");
+    if (recessionRisk > 0.3) evidence.push("침체 우려 → 안전자산 수요 증가");
+
+    let bondContent: string;
+    if (recessionRisk > 0.4) {
+      bondContent = "국채, 금, 달러 등 안전자산 비중을 50% 이상으로 확대하세요. 침체 초기 국채 금리 급락(가격 급등)이 예상되어 장기채가 유리합니다. 투자등급 이하 회사채는 부도 리스크로 피하세요.";
+    } else if (isRateCutting) {
+      bondContent = `금리 인하 사이클에서 채권 가격 상승이 기대됩니다. 장기채(TLT) 비중을 늘리는 것을 고려하세요. ${t10y && parseFloat(t10y.displayValue) > 4 ? `현재 10년 금리 ${t10y.displayValue}로 높은 수준에서의 진입은 이중 수익(이자+자본이익) 가능.` : ""}`;
+    } else if (t10y && parseFloat(t10y.displayValue) > 4.0) {
+      bondContent = `10년 금리 ${t10y.displayValue}로 채권 수익률이 매력적입니다. 분할 매수로 채권 포지션을 구축하세요. 포트폴리오의 25~35%를 채권에 배분하는 것을 권장합니다.`;
+    } else {
+      bondContent = "채권은 포트폴리오 안정화 목적으로 20~30% 배분을 유지하세요. 금리 변동 방향에 따라 듀레이션을 조절하세요.";
+    }
+    guide.push({ title: "채권 & 안전자산", content: bondContent, color: "blue", evidence });
+  }
+
+  // Crypto Implication Guide (data-driven, nuanced)
+  {
+    const evidence: string[] = [];
+    const positiveFactors: string[] = [];
+    const negativeFactors: string[] = [];
+
+    // Analyze each factor for crypto specifically
+    if (isRateCutting) { positiveFactors.push("금리 인하 추세"); evidence.push(`기준금리 ${fedRate!.displayValue} (${fedRate!.trend === "down" ? "↓ 인하 추세" : "횡보"}) → 유동성 증가 기대 → 크립토 긍정적`); }
+    else if (isLowRate) { positiveFactors.push("저금리 환경"); evidence.push(`기준금리 ${fedRate!.displayValue} → 풍부한 유동성 → 크립토 강세 요인`); }
+    else if (isHighRate) { negativeFactors.push("고금리 유동성 제약"); evidence.push(`기준금리 ${fedRate!.displayValue} → 유동성 제한. 국채 대비 크립토 기회비용 증가. 2022년 금리인상기 BTC -65% 하락 선례.`); }
+
+    if (isLowInflation) { positiveFactors.push("안정적 물가"); evidence.push(`CPI ${cpi!.displayValue} → 금리 인하 여력 → 크립토 유동성 환경 개선`); }
+    else if (isHighInflation) { negativeFactors.push("인플레이션 지속"); evidence.push(`CPI ${cpi!.displayValue} → 연준 긴축 연장 가능 → 유동성 축소 리스크`); }
+
+    if (isStrongGrowth) { positiveFactors.push("건전한 경제 성장"); evidence.push(`GDP ${gdp!.displayValue} → Risk-on 심리 지지 → 크립토 포함 위험자산 선호`); }
+    else if (isNegativeGrowth) { negativeFactors.push("경기 위축"); evidence.push(`GDP ${gdp!.displayValue} → 침체기 위험자산 전반 매도 → 크립토 동반 하락 (2022년 패턴)`); }
+
+    if (isLowVix) { positiveFactors.push("낮은 변동성"); evidence.push(`VIX ${vix!.displayValue} → 시장 안정 → 위험자산 선호 환경`); }
+    else if (isHighVix) { negativeFactors.push("높은 변동성"); evidence.push(`VIX ${vix!.displayValue} → 리스크-오프 심리 → 크립토 매도 압력. 다만 VIX 극단치는 역사적 매수 기회와 겹침.`); }
+
+    if (realRate !== null) {
+      if (realRate < 0) { positiveFactors.push("음(-)의 실질금리"); evidence.push(`실질금리 ${realRate.toFixed(1)}%p → 현금 보유 불리 → BTC 등 대체자산 매력↑ (2020~2021년 패턴)`); }
+      else if (realRate > 2.0) { negativeFactors.push("높은 실질금리"); evidence.push(`실질금리 +${realRate.toFixed(1)}%p → 무위험수익률 매력 → 크립토 기회비용 큼`); }
+    }
+
+    if (recessionRisk > 0.35) { negativeFactors.push("높은 침체 확률"); evidence.push(`침체 확률 ${(recessionRisk * 100).toFixed(0)}% → 역사적으로 침체기 크립토 대폭 하락 (2020.03 BTC -50%, 2022 BTC -65%)`); }
+    if (recessionRisk <= 0.15 && isLowUnemp) { positiveFactors.push("경기 확장 + 완전고용"); evidence.push(`침체 확률 ${(recessionRisk * 100).toFixed(0)}%, 실업률 ${unemp!.displayValue} → 골디락스 환경. 2024~2025년 BTC 사이클과 유사.`); }
+
+    // Yield curve inversion check
+    if (t10y && fedRate) {
+      const t10yV = parseFloat(t10y.displayValue);
+      if (t10yV < fedRate.value) {
+        negativeFactors.push("장단기 금리 역전");
+        evidence.push(`10Y ${t10y.displayValue} < 기준금리 ${fedRate.displayValue} → 수익률 곡선 역전 = 6~18개월 내 침체 경고 → 크립토 하방 리스크 확대`);
+      }
+    }
+
+    const posCount = positiveFactors.length;
+    const negCount = negativeFactors.length;
+
+    let cryptoColor: string;
+    let cryptoContent: string;
+
+    if (posCount >= negCount + 2) {
+      cryptoColor = "green";
+      cryptoContent = `거시경제 환경이 크립토에 우호적입니다. 긍정 요인(${positiveFactors.join(", ")})이 부정 요인을 크게 상회합니다. ${isRateCutting || isLowRate ? "유동성 확대 구간은 역사적으로 크립토 강세장(2020 Q4~2021, 2024~2025)과 일치합니다." : "다만 유동성 환경의 변화를 지속 모니터링하세요."} 포트폴리오 내 크립토 비중을 적극적으로 운영할 수 있는 구간이나, 거시 환경 변화에 대한 리밸런싱 기준을 미리 설정하세요.`;
+    } else if (posCount > negCount) {
+      cryptoColor = "yellow";
+      cryptoContent = `거시 환경이 크립토에 조건부 우호적입니다. 긍정 요인(${positiveFactors.join(", ")})이 우세하나, ${negativeFactors.length > 0 ? `부정 요인(${negativeFactors.join(", ")})도 존재합니다.` : "불확실성이 잔존합니다."} ${isHighRate ? `특히 기준금리 ${fedRate!.displayValue}의 높은 수준은 크립토 시장의 상승 탄력을 제한합니다. 2018~2019년처럼 거시는 나쁘지 않으나 유동성 부족으로 크립토가 횡보한 사례를 참고하세요.` : ""} 선별적 접근과 분할 매수 전략을 권장합니다.`;
+    } else if (posCount === negCount) {
+      cryptoColor = "orange";
+      cryptoContent = `거시 환경이 크립토에 혼조세입니다. 긍정 요인(${positiveFactors.join(", ")})과 부정 요인(${negativeFactors.join(", ")})이 팽팽히 맞서고 있습니다. 방향성 판단이 어려운 구간으로, 크립토 포지션을 축소하거나 현금 비중을 높여 관망하세요. 거시 데이터의 변화 방향(특히 금리·인플레 추세)이 향후 크립토 방향을 결정할 핵심 변수입니다.`;
+    } else {
+      cryptoColor = "red";
+      cryptoContent = `거시 환경이 크립토에 비우호적입니다. 부정 요인(${negativeFactors.join(", ")})이 긍정 요인을 압도합니다. ${recessionRisk > 0.35 ? "경기침체 시 크립토는 리스크 자산으로서 큰 하락을 경험합니다 (2022년 BTC -65%, ETH -68%)." : ""} ${isHighRate && isHighInflation ? "고금리+고인플레 조합은 크립토에 가장 불리한 거시 환경입니다 (2022년 패턴)." : ""} 현금 비중을 극대화하고, 하락 시 DCA 매수를 위한 자금을 확보하세요. 매크로 바닥 확인 후 진입이 리스크 대비 수익이 높습니다.`;
+    }
+
     guide.push({
-      title: "채권 & 안전자산",
-      content: "국채, 금, 달러 등 안전자산 비중을 50% 이상으로 확대하세요. 침체 초기에는 국채 금리가 급락(가격 급등)하므로 장기채가 유리합니다. 회사채는 부도 리스크로 피하세요.",
-      color: "blue",
-    });
-    guide.push({
-      title: "암호화폐 시사점",
-      content: "거시 경기침체 시 크립토는 리스크 자산으로서 큰 하락을 경험합니다 (2022년 사례). 현금 비중을 극대화하고, 하락 시 DCA 매수를 위한 자금을 확보하세요. 침체 바닥에서의 매수가 다음 사이클의 시작점이 됩니다.",
-      color: "red",
+      title: `암호화폐 시사점 (긍정 ${posCount} / 부정 ${negCount})`,
+      content: cryptoContent,
+      color: cryptoColor,
+      evidence,
     });
   }
 
@@ -206,8 +467,8 @@ function generateMacroAnalysis(
   }
 
   if (cpi && fedRate) {
-    const realRate = fedRate.value - cpi.value;
-    implications.push(`실질금리(기준금리 - CPI): ${realRate >= 0 ? "+" : ""}${realRate.toFixed(1)}%p. ${realRate > 1.5 ? "높은 실질금리는 경기 억제 효과가 있으며, 금리 인하 압력을 높입니다." : realRate > 0 ? "양(+)의 실질금리로 긴축적 환경이지만 극단적 수준은 아닙니다." : "음(-)의 실질금리로 실질적 완화 상태이며, 자산 가격에 우호적입니다."}`);
+    const rr = fedRate.value - cpi.value;
+    implications.push(`실질금리(기준금리 - CPI): ${rr >= 0 ? "+" : ""}${rr.toFixed(1)}%p. ${rr > 1.5 ? "높은 실질금리는 경기 억제 효과가 있으며, 금리 인하 압력을 높입니다." : rr > 0 ? "양(+)의 실질금리로 긴축적 환경이지만 극단적 수준은 아닙니다." : "음(-)의 실질금리로 실질적 완화 상태이며, 자산 가격에 우호적입니다."}`);
   }
 
   if (unemp) {
@@ -238,7 +499,7 @@ function generateMacroAnalysis(
     }
   }
 
-  return { sentiment, parts, guide, implications, recessionRisk };
+  return { sentiment, parts, guide, implications, recessionRisk, riskAxes, riskAssetVerdict, riskFriendliness };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +509,7 @@ export default function MacroIndicatorsPage() {
   const [indicators, setIndicators] = useState<MacroIndicator[]>([]);
   const [recession, setRecession] = useState<RecessionRisk | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showInfo, setShowInfo] = useState<string | null>(null);
+
 
   useEffect(() => {
     async function fetchAll() {
@@ -487,183 +748,324 @@ export default function MacroIndicatorsPage() {
             {recession?.source === "fred" ? "FRED 실시간 데이터" : "샘플 데이터"} 기반
           </p>
         </div>
-        <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center justify-center">
+        <div className="rounded-lg border border-border bg-card p-4 flex flex-col items-center justify-center">
           <h3 className="text-xs font-medium text-muted-foreground mb-1">경제 건전성</h3>
           <GaugeChart value={1 - avgRisk} label="Economic Health" size="sm" />
-          <p className="mt-2 text-xs text-muted-foreground">{indicators.length}개 지표</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">{indicators.length}개 지표 평균</p>
         </div>
-        <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center justify-center">
-          <Activity className="h-5 w-5 text-muted-foreground mb-1" />
-          <div className="flex gap-4 mt-2">
-            <div className="text-center">
-              <p className="text-lg font-bold text-green-500">{healthy}</p>
-              <p className="text-[10px] text-muted-foreground">건전</p>
+        <div className="rounded-lg border border-border bg-card p-4 flex flex-col">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">지표별 상태</span>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-xs font-semibold text-green-500">건전 {healthy}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {indicators.filter(i => i.status === "healthy").map(i => (
+                  <span key={i.name} className="text-[9px] bg-green-500/10 text-green-600 rounded px-1.5 py-0.5">{i.name.split(" (")[0]}</span>
+                ))}
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-yellow-500">{caution}</p>
-              <p className="text-[10px] text-muted-foreground">주의</p>
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />
+                <span className="text-xs font-semibold text-yellow-500">주의 {caution}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {indicators.filter(i => i.status === "caution").map(i => (
+                  <span key={i.name} className="text-[9px] bg-yellow-500/10 text-yellow-600 rounded px-1.5 py-0.5">{i.name.split(" (")[0]}</span>
+                ))}
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-red-500">{warning}</p>
-              <p className="text-[10px] text-muted-foreground">경고</p>
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-xs font-semibold text-red-500">경고 {warning}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {indicators.filter(i => i.status === "warning" || i.status === "danger").map(i => (
+                  <span key={i.name} className="text-[9px] bg-red-500/10 text-red-600 rounded px-1.5 py-0.5">
+                    {i.name.split(" (")[0]} {i.status === "danger" ? "⚠" : ""}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ─── Market Sentiment & Investment Guide ─── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* 시장 분위기 */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">거시경제 분위기 분석</h2>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className={`rounded-lg p-4 ${
-              analysis.sentiment.color === "green" ? "bg-green-500/5 border border-green-500/20" :
-              analysis.sentiment.color === "red" ? "bg-red-500/5 border border-red-500/20" :
-              analysis.sentiment.color === "orange" ? "bg-orange-500/5 border border-orange-500/20" :
-              "bg-yellow-500/5 border border-yellow-500/20"
-            }`}>
-              <p className={`text-sm font-bold mb-1 ${
-                analysis.sentiment.color === "green" ? "text-green-600" :
-                analysis.sentiment.color === "red" ? "text-red-600" :
-                analysis.sentiment.color === "orange" ? "text-orange-600" :
-                "text-yellow-600"
-              }`}>
-                {analysis.sentiment.emoji} {analysis.sentiment.title}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                경기침체 확률 {(analysis.recessionRisk * 100).toFixed(1)}% | 건전 {healthy} · 주의 {caution} · 경고 {warning}
-              </p>
-            </div>
-            {analysis.parts.map((p, i) => (
-              <p key={i} className="text-sm leading-relaxed text-foreground/90">{p}</p>
-            ))}
-          </div>
+      {/* ─── 지표별 건전성 차트 ─── */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">경제 건전성 지표 ({indicators.length}개)</h2>
+          <span className="ml-auto text-[10px] text-muted-foreground">리스크 0% = 건전, 100% = 위험</span>
         </div>
-
-        {/* 투자 가이드 */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
-            <Shield className="h-4 w-4 text-yellow-500" />
-            <h2 className="text-sm font-semibold">투자 가이드</h2>
-          </div>
-          <div className="p-5 space-y-3">
-            {analysis.guide.map((g, i) => {
-              const bc = g.color === "green" ? "border-green-500/30" : g.color === "red" ? "border-red-500/30" : g.color === "blue" ? "border-blue-500/30" : "border-yellow-500/30";
-              const bg = g.color === "green" ? "bg-green-500/5" : g.color === "red" ? "bg-red-500/5" : g.color === "blue" ? "bg-blue-500/5" : "bg-yellow-500/5";
-              const tc = g.color === "green" ? "text-green-600" : g.color === "red" ? "text-red-600" : g.color === "blue" ? "text-blue-600" : "text-yellow-600";
+        <div className="p-5">
+          {/* Category groups */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Group by category */}
+            {(["growth", "inflation", "labor", "rates", "market"] as const).map((cat) => {
+              const catIndicators = indicators.filter((i) => i.category === cat);
+              if (catIndicators.length === 0) return null;
+              const catLabel = cat === "growth" ? "경제 성장" : cat === "inflation" ? "인플레이션" : cat === "labor" ? "노동시장" : cat === "rates" ? "금리/채권" : "시장 심리";
+              const catEmoji = cat === "growth" ? "📈" : cat === "inflation" ? "💰" : cat === "labor" ? "👷" : cat === "rates" ? "🏦" : "📊";
+              const catAvgRisk = catIndicators.reduce((s, i) => s + i.risk, 0) / catIndicators.length;
               return (
-                <div key={i} className={`rounded-lg border ${bc} ${bg} p-3`}>
-                  <p className={`text-xs font-bold mb-1 ${tc}`}>{g.title}</p>
-                  <p className="text-xs leading-relaxed text-foreground/80">{g.content}</p>
+                <div key={cat} className="rounded-lg border border-border/50 p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{catEmoji}</span>
+                      <span className="text-xs font-semibold">{catLabel}</span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      catAvgRisk < 0.33 ? "bg-green-500/10 text-green-600" :
+                      catAvgRisk < 0.66 ? "bg-yellow-500/10 text-yellow-600" :
+                      "bg-red-500/10 text-red-600"
+                    }`}>
+                      {catAvgRisk < 0.33 ? "양호" : catAvgRisk < 0.66 ? "주의" : "위험"}
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {catIndicators.map((ind) => {
+                      const barColor = ind.risk < 0.33 ? "#10b981" : ind.risk < 0.66 ? "#eab308" : "#ef4444";
+                      const bgBarColor = ind.risk < 0.33 ? "bg-green-500/8" : ind.risk < 0.66 ? "bg-yellow-500/8" : "bg-red-500/8";
+                      return (
+                        <div key={ind.name} className={`rounded-md p-2 ${bgBarColor}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[11px] font-medium">{ind.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-mono font-semibold">{ind.displayValue}</span>
+                              <span className={`inline-flex items-center gap-0.5 text-[9px] ${
+                                ind.trendDirection === "positive" ? "text-green-500" :
+                                ind.trendDirection === "negative" ? "text-red-500" :
+                                "text-yellow-500"
+                              }`}>
+                                {ind.trend === "up" ? "▲" : ind.trend === "down" ? "▼" : "─"}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Risk bar */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${Math.max(2, ind.risk * 100)}%`, background: barColor }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono tabular-nums w-8 text-right" style={{ color: barColor }}>
+                              {(ind.risk * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          {/* Threshold markers */}
+                          <div className="flex items-center justify-between mt-0.5 px-0.5">
+                            <span className="text-[8px] text-muted-foreground/50">건전</span>
+                            <span className="text-[8px] text-muted-foreground/50">|</span>
+                            <span className="text-[8px] text-muted-foreground/50">주의</span>
+                            <span className="text-[8px] text-muted-foreground/50">|</span>
+                            <span className="text-[8px] text-muted-foreground/50">경고</span>
+                          </div>
+                          {/* Description */}
+                          <p className="text-[9px] text-muted-foreground mt-1 leading-relaxed">{ind.description}</p>
+                          {/* Status badge + previous */}
+                          <div className="flex items-center justify-between mt-1.5">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded ${statusColor[ind.status].bg} ${statusColor[ind.status].text}`}>
+                              {ind.status === "healthy" ? "● 건전" : ind.status === "caution" ? "● 주의" : ind.status === "warning" ? "▲ 경고" : "⚠ 위험"}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground">
+                              이전: {ind.displayPrev} · {freshnessLabel[ind.freshness]} · {ind.source}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Overall risk bar */}
+          <div className="mt-5 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold">종합 리스크 수준</span>
+              <span className={`text-xs font-bold ${
+                avgRisk < 0.33 ? "text-green-500" : avgRisk < 0.66 ? "text-yellow-500" : "text-red-500"
+              }`}>
+                {(avgRisk * 100).toFixed(0)}% ({avgRisk < 0.25 ? "매우 건전" : avgRisk < 0.4 ? "건전" : avgRisk < 0.55 ? "보통" : avgRisk < 0.7 ? "주의 필요" : "위험"})
+              </span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: "linear-gradient(to right, #10b981 0%, #10b981 33%, #eab308 33%, #eab308 66%, #ef4444 66%, #ef4444 100%)", opacity: 0.15 }}>
+            </div>
+            <div className="relative h-3 -mt-3 rounded-full overflow-hidden">
+              <div
+                className="absolute top-0 left-0 h-full rounded-full border-2 border-white dark:border-gray-900"
+                style={{
+                  width: "6px",
+                  left: `calc(${avgRisk * 100}% - 3px)`,
+                  background: avgRisk < 0.33 ? "#10b981" : avgRisk < 0.66 ? "#eab308" : "#ef4444",
+                  boxShadow: "0 0 6px rgba(0,0,0,0.3)",
+                }}
+              />
+            </div>
+            <div className="flex justify-between mt-1 text-[9px] text-muted-foreground">
+              <span>0% 건전</span>
+              <span>33%</span>
+              <span>66%</span>
+              <span>100% 위험</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 시사점 */}
+      {/* ─── Market Sentiment + 핵심 시사점 통합 ─── */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
-          <Lightbulb className="h-4 w-4 text-amber-500" />
-          <h2 className="text-sm font-semibold">핵심 시사점</h2>
-          <span className="ml-auto text-[10px] text-muted-foreground">지표 데이터 기반 자동 분석 · 투자 조언이 아닙니다</span>
+          <BarChart3 className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">거시경제 분위기 분석</h2>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className={`rounded-lg p-4 ${
+            analysis.sentiment.color === "green" ? "bg-green-500/5 border border-green-500/20" :
+            analysis.sentiment.color === "red" ? "bg-red-500/5 border border-red-500/20" :
+            analysis.sentiment.color === "orange" ? "bg-orange-500/5 border border-orange-500/20" :
+            "bg-yellow-500/5 border border-yellow-500/20"
+          }`}>
+            <p className={`text-sm font-bold mb-1 ${
+              analysis.sentiment.color === "green" ? "text-green-600" :
+              analysis.sentiment.color === "red" ? "text-red-600" :
+              analysis.sentiment.color === "orange" ? "text-orange-600" :
+              "text-yellow-600"
+            }`}>
+              {analysis.sentiment.emoji} {analysis.sentiment.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              경기침체 확률 {(analysis.recessionRisk * 100).toFixed(1)}% | 건전 {healthy} · 주의 {caution} · 경고 {warning}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {analysis.parts.map((p, i) => (
+              <p key={i} className="text-sm leading-relaxed text-foreground/90">{p}</p>
+            ))}
+          </div>
+
+          {/* 핵심 시사점 (통합) */}
+          {analysis.implications.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                <span className="text-xs font-semibold">핵심 시사점</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">지표 데이터 기반 자동 분석</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {analysis.implications.map((imp, i) => (
+                  <div key={i} className="flex items-start gap-2.5 rounded-lg bg-muted/30 p-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs leading-relaxed">{imp}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ─── 위험자산 우호도 평가 (5-Axis) ─── */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">위험자산 우호도 평가</h2>
+          <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${
+            analysis.riskAssetVerdict.color === "green" ? "bg-green-500/10 text-green-600" :
+            analysis.riskAssetVerdict.color === "red" ? "bg-red-500/10 text-red-600" :
+            analysis.riskAssetVerdict.color === "orange" ? "bg-orange-500/10 text-orange-600" :
+            "bg-yellow-500/10 text-yellow-600"
+          }`}>
+            {analysis.riskAssetVerdict.emoji} {analysis.riskAssetVerdict.label} ({(analysis.riskFriendliness * 100).toFixed(0)}점)
+          </span>
         </div>
         <div className="p-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {analysis.implications.map((imp, i) => (
-              <div key={i} className="flex items-start gap-2.5 rounded-lg bg-muted/30 p-3">
-                <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs leading-relaxed">{imp}</p>
+          <p className="text-sm text-foreground/80 mb-4">{analysis.riskAssetVerdict.summary}</p>
+          <div className="space-y-3">
+            {analysis.riskAxes.map((axis, i) => (
+              <div key={i} className="rounded-lg bg-muted/20 p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold">{axis.axis}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {[-2, -1, 0, 1, 2].map((v) => (
+                        <div
+                          key={v}
+                          className={`w-4 h-2.5 rounded-sm ${
+                            axis.score > 0 && v > 0 && v <= axis.score ? "bg-green-500" :
+                            axis.score < 0 && v < 0 && v >= axis.score ? "bg-red-500" :
+                            axis.score === 0 && v === 0 ? "bg-yellow-500" :
+                            "bg-muted-foreground/10"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      axis.score >= 1 ? "bg-green-500/10 text-green-600" :
+                      axis.score <= -1 ? "bg-red-500/10 text-red-600" :
+                      "bg-yellow-500/10 text-yellow-600"
+                    }`}>
+                      {axis.label}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{axis.evidence}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Indicator Table */}
+      {/* ─── Investment Guide ─── */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30">
-          <h2 className="text-sm font-semibold">거시경제 지표 상세</h2>
+        <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <Shield className="h-4 w-4 text-yellow-500" />
+          <h2 className="text-sm font-semibold">투자 가이드</h2>
+          <span className="ml-auto text-[10px] text-muted-foreground">거시 지표 기반 분석 · 투자 조언이 아닙니다</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 text-left font-medium text-muted-foreground">지표</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">현재값</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">이전</th>
-                <th className="px-4 py-2 text-center font-medium text-muted-foreground">추세</th>
-                <th className="px-4 py-2 text-center font-medium text-muted-foreground">리스크</th>
-                <th className="px-4 py-2 text-center font-medium text-muted-foreground">상태</th>
-                <th className="px-4 py-2 text-center font-medium text-muted-foreground">주기</th>
-                <th className="px-4 py-2 text-left font-medium text-muted-foreground">소스</th>
-              </tr>
-            </thead>
-            <tbody>
-              {indicators.map((ind) => {
-                const sc = statusColor[ind.status];
-                return (
-                  <tr key={ind.name} className="border-b border-border hover:bg-muted/20">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium">{ind.name}</span>
-                        <button
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => setShowInfo(showInfo === ind.name ? null : ind.name)}
-                        >
-                          <Info className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {showInfo === ind.name && (
-                        <p className="text-[11px] text-muted-foreground mt-1">{ind.description}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold">{ind.displayValue}</td>
-                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">{ind.displayPrev}</td>
-                    <td className="px-4 py-2 text-center">
-                      {ind.trend === "up" ? (
-                        <TrendingUp className={`inline h-4 w-4 ${ind.trendDirection === "positive" ? "text-green-500" : ind.trendDirection === "negative" ? "text-red-500" : "text-yellow-500"}`} />
-                      ) : ind.trend === "down" ? (
-                        <TrendingDown className={`inline h-4 w-4 ${ind.trendDirection === "positive" ? "text-green-500" : ind.trendDirection === "negative" ? "text-red-500" : "text-yellow-500"}`} />
-                      ) : (
-                        <Minus className="inline h-4 w-4 text-yellow-500" />
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <div className="inline-flex items-center gap-1.5">
-                        <div className="h-2 w-12 rounded-full bg-muted/50 overflow-hidden">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${ind.risk * 100}%`,
-                              background: ind.risk < 0.33 ? "#10b981" : ind.risk < 0.66 ? "#eab308" : "#ef4444",
-                            }}
-                          />
+        <div className="p-5 space-y-4">
+          {analysis.guide.map((g, i) => {
+            const bc = g.color === "green" ? "border-green-500/30" : g.color === "red" ? "border-red-500/30" : g.color === "blue" ? "border-blue-500/30" : g.color === "orange" ? "border-orange-500/30" : "border-yellow-500/30";
+            const bgc = g.color === "green" ? "bg-green-500/5" : g.color === "red" ? "bg-red-500/5" : g.color === "blue" ? "bg-blue-500/5" : g.color === "orange" ? "bg-orange-500/5" : "bg-yellow-500/5";
+            const tc = g.color === "green" ? "text-green-600" : g.color === "red" ? "text-red-600" : g.color === "blue" ? "text-blue-600" : g.color === "orange" ? "text-orange-600" : "text-yellow-600";
+            return (
+              <div key={i} className={`rounded-lg border ${bc} ${bgc} p-4`}>
+                <p className={`text-xs font-bold mb-2 ${tc}`}>{g.title}</p>
+                <p className="text-xs leading-relaxed text-foreground/80 mb-3">{g.content}</p>
+                {g.evidence.length > 0 && (
+                  <div className="border-t border-border/50 pt-2 mt-2">
+                    <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">판단 근거:</p>
+                    <div className="space-y-1">
+                      {g.evidence.map((ev, j) => (
+                        <div key={j} className="flex items-start gap-1.5">
+                          <span className={`text-[9px] mt-0.5 ${ev.startsWith("⚠") ? "text-orange-500" : "text-muted-foreground"}`}>
+                            {ev.startsWith("⚠") ? "⚠" : "•"}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground leading-relaxed">
+                            {ev.startsWith("⚠ ") ? ev.slice(2) : ev}
+                          </span>
                         </div>
-                        <span className="text-xs tabular-nums">{(ind.risk * 100).toFixed(0)}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${sc.bg} ${sc.text}`}>
-                        {ind.status === "healthy" ? "건전" : ind.status === "caution" ? "주의" : ind.status === "warning" ? "경고" : "위험"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className="text-[10px] text-muted-foreground">{freshnessLabel[ind.freshness]}</span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{ind.source}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
+
+
+
     </div>
   );
 }

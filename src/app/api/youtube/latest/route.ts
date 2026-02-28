@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 // No API key required - uses the public Atom feed.
 // ---------------------------------------------------------------------------
 
-// Benjamin Cowen's channel
+// YouTube channel for latest video feed
 const CHANNEL_ID = "UCRvqjQPSeaWn-uEx-w0XOIg";
 const RSS_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
 
@@ -55,7 +55,7 @@ async function fetchLatestVideo(): Promise<VideoInfo | null> {
       videoId,
       title,
       thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      author: author || "Benjamin Cowen",
+      author: author || "JangBK",
       published,
       link: link || `https://www.youtube.com/watch?v=${videoId}`,
     };
@@ -85,7 +85,7 @@ export async function GET() {
       videoId: "eAzoXY1GfIo",
       title: "Bitcoin: Dubious Speculation",
       thumbnail: "https://img.youtube.com/vi/eAzoXY1GfIo/mqdefault.jpg",
-      author: "Benjamin Cowen",
+      author: "JangBK",
       published: new Date().toISOString(),
       link: "https://www.youtube.com/watch?v=eAzoXY1GfIo",
     },

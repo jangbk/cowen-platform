@@ -25,7 +25,7 @@ export async function GET() {
   const result: Record<string, unknown> = {};
 
   // Fetch all in parallel
-  const [fundingRes, lsRes, oiRes, mvrvRes, mktCapRes, minersRes, txVolRes, addrRes] =
+  const [fundingRes, lsRes, oiRes, mvrvRes, mktCapRes, minersRes, txVolRes, addrRes, priceHistRes] =
     await Promise.allSettled([
       // 1. Binance Funding Rate
       fetchJSON(
@@ -58,6 +58,10 @@ export async function GET() {
       // 8. blockchain.com Active Addresses
       fetchJSON(
         "https://api.blockchain.info/charts/n-unique-addresses?timespan=30days&format=json"
+      ),
+      // 9. CoinGecko BTC price history (1400 days for 200W MA + Pi Cycle)
+      fetchJSON(
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1400&interval=daily"
       ),
     ]);
 
@@ -145,7 +149,37 @@ export async function GET() {
     result.activeAddressesChange = ((latest - avg30) / avg30) * 100;
   }
 
-  result.source = "binance/coinmetrics/blockchain.com";
+  // --- 200W MA Multiple & Pi Cycle Top & SOPR approx ---
+  if (priceHistRes.status === "fulfilled" && priceHistRes.value?.prices?.length > 0) {
+    const prices: number[] = priceHistRes.value.prices.map((p: [number, number]) => p[1]);
+    const currentPrice = prices[prices.length - 1];
+
+    // 200W MA Multiple (200 weeks = 1400 days)
+    if (prices.length >= 1400) {
+      const sma200w = prices.slice(-1400).reduce((a: number, b: number) => a + b, 0) / 1400;
+      result.ma200wMultiple = currentPrice / sma200w;
+      result.ma200wSma = sma200w;
+    } else if (prices.length >= 200) {
+      // Use whatever we have
+      const sma = prices.reduce((a: number, b: number) => a + b, 0) / prices.length;
+      result.ma200wMultiple = currentPrice / sma;
+      result.ma200wSma = sma;
+    }
+
+    // Pi Cycle Top: 111DMA crossing above 350DMA * 2
+    if (prices.length >= 350) {
+      const sma111 = prices.slice(-111).reduce((a: number, b: number) => a + b, 0) / 111;
+      const sma350x2 = (prices.slice(-350).reduce((a: number, b: number) => a + b, 0) / 350) * 2;
+      result.piCycleTriggered = sma111 >= sma350x2;
+      result.piCycle111DMA = sma111;
+      result.piCycle350DMAx2 = sma350x2;
+      result.piCycleGap = ((sma350x2 - sma111) / sma350x2) * 100; // % gap, negative = triggered
+    }
+
+    result.btcCurrentPrice = currentPrice;
+  }
+
+  result.source = "binance/coinmetrics/blockchain.com/coingecko";
   result.timestamp = new Date().toISOString();
 
   // Cache the result

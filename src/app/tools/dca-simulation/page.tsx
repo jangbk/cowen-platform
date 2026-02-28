@@ -353,8 +353,8 @@ export default function DCASimulationPage() {
               </h4>
               <p>
                 총 투자금, 현재 가치, 수익률, 평균 매수가 등의 요약 지표와
-                포트폴리오 가치 추이 차트를 확인합니다. 하단의 &quot;거래
-                내역&quot;을 펼치면 개별 매수 기록을 볼 수 있습니다.
+                포트폴리오 가치 추이 차트를 확인합니다. 하단의 &quot;시뮬레이션
+                거래 내역&quot;을 펼치면 개별 매수 기록을 볼 수 있습니다.
               </p>
             </div>
           </div>
@@ -642,7 +642,7 @@ export default function DCASimulationPage() {
                   className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold hover:bg-muted/30"
                 >
                   <span>
-                    거래 내역 (
+                    시뮬레이션 거래 내역 (
                     {results.trades.filter((t) => t.amount > 0).length}건)
                   </span>
                   <ChevronDown

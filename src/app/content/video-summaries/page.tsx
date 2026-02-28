@@ -45,10 +45,10 @@ const INITIAL_SUMMARIES: VideoSummary[] = [
     videoUrl: "https://youtu.be/eAzoXY1GfIo",
     videoId: "eAzoXY1GfIo",
     title: "Bitcoin: Dubious Speculation",
-    channel: "Benjamin Cowen",
+    channel: "JangBK",
     date: "2026-02-06",
     thumbnailUrl: "https://img.youtube.com/vi/eAzoXY1GfIo/maxresdefault.jpg",
-    summary: `Benjamin Cowen은 비트코인이 고점 대비 약 50% 하락한 현 시점에서, 과거 베어마켓 사이클(2014, 2018, 2019, 2022)과 비교 분석을 진행합니다.
+    summary: `비트코인이 고점 대비 약 50% 하락한 현 시점에서, 과거 베어마켓 사이클(2014, 2018, 2019, 2022)과 비교 분석을 진행합니다.
 
 핵심 메시지: "베어마켓은 불과 베어 모두를 바보로 만든다(Bear markets make fools of both bulls and bears)."
 
@@ -62,7 +62,7 @@ const INITIAL_SUMMARIES: VideoSummary[] = [
 
 향후 2~3개월간 높은 변동성이 예상되며, 여름에는 변동성이 크게 감소할 것으로 보입니다. Q4에 변동성이 다시 증가하며 다음 사이클이 시작될 수 있습니다.
 
-또한 Cowen은 과거 매 사이클마다 불장에서 잘못된 사업 결정을 내린 기업들이 베어마켓에서 드러난다고 경고합니다(2022년의 FTX 사례처럼). 현재도 고점에서 레버리지를 과도하게 사용한 비트코인 재무회사(treasury company)들이 잠재적 리스크로 존재합니다.`,
+또한 과거 매 사이클마다 불장에서 잘못된 사업 결정을 내린 기업들이 베어마켓에서 드러난다고 경고합니다(2022년의 FTX 사례처럼). 현재도 고점에서 레버리지를 과도하게 사용한 비트코인 재무회사(treasury company)들이 잠재적 리스크로 존재합니다.`,
     investmentGuide: `1. 단기 전략 (2~4주)
 현재 50% 하락 후 카운터 트렌드 랠리 구간. 과거 패턴에 따르면 며칠~몇 주간 반등 가능하나, 3월 초에 낮은 고점(lower high) 형성 후 재하락 가능성이 높음. 단기 트레이딩은 소규모로, 손실 관리 철저히.
 
@@ -102,7 +102,7 @@ const INITIAL_SUMMARIES: VideoSummary[] = [
       "Bitcoin",
       "Bear Market",
       "Cycle Analysis",
-      "Benjamin Cowen",
+      "JangBK",
       "Risk Management",
     ],
     savedToNotion: false,

@@ -768,7 +768,7 @@ export default function DashboardPage() {
               <p className="mt-2 text-sm font-medium group-hover:text-primary transition-colors line-clamp-2">
                 {latestVideo?.title || "Loading..."}
               </p>
-              <p className="text-xs text-muted-foreground">{latestVideo?.author || "Benjamin Cowen"}</p>
+              <p className="text-xs text-muted-foreground">{latestVideo?.author || "JangBK"}</p>
             </Link>
           </section>
 

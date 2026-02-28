@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import dns from "dns";
 import {
   type Trade,
   calcTotalReturn,
@@ -12,6 +13,9 @@ import {
   buildEquityCurve,
   calcAvgWinLoss,
 } from "@/lib/bot-metrics";
+
+// Force IPv4 to avoid IPv6 IP mismatch with Coinone whitelist
+dns.setDefaultResultOrder("ipv4first");
 
 const ACCESS_TOKEN = process.env.COINONE_ACCESS_TOKEN ?? "";
 const SECRET_KEY = process.env.COINONE_SECRET_KEY ?? "";
@@ -71,8 +75,8 @@ export async function GET() {
       coinonePrivateRequest("/v2.1/account/balance/all"),
       coinonePublicRequest("/public/v2/ticker_new/KRW/BTC"),
       coinonePrivateRequest("/v2.1/order/completed_orders", {
-        target_currency: "BTC",
-        quote_currency: "KRW",
+        target_currency: "btc",
+        quote_currency: "krw",
       }),
     ]);
 
@@ -80,15 +84,18 @@ export async function GET() {
       throw new Error(`Coinone balance error: ${JSON.stringify(balanceRes)}`);
     }
 
-    // Parse balance
+    // Coinone V2.1: fields are "available" and "limit" (not "balance"/"locked")
     const balances = balanceRes.balances as Array<Record<string, string>> ?? [];
     const btcBalance = balances.find((b) => b.currency === "BTC");
     const krwBalance = balances.find((b) => b.currency === "KRW");
 
-    const totalBtc = parseFloat(btcBalance?.balance || "0");
     const availableBtc = parseFloat(btcBalance?.available || "0");
-    const totalKrw = parseFloat(krwBalance?.balance || "0");
+    const limitBtc = parseFloat(btcBalance?.limit || "0");
+    const totalBtc = availableBtc + limitBtc;
+
     const availableKrw = parseFloat(krwBalance?.available || "0");
+    const limitKrw = parseFloat(krwBalance?.limit || "0");
+    const totalKrw = availableKrw + limitKrw;
 
     // Current BTC price from ticker
     const tickers = (tickerRes.tickers as Array<Record<string, string>>) ?? [];

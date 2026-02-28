@@ -25,11 +25,11 @@ interface Channel {
 const CHANNELS: Channel[] = [
   // ── 해외 ──────────────────────────────────────────────────────────────
   {
-    name: "Into The Cryptoverse",
-    handle: "@intothecryptoverse",
-    url: "https://www.youtube.com/@intothecryptoverse",
+    name: "JangBK Crypto",
+    handle: "@jangbk",
+    url: "https://www.youtube.com/@jangbk",
     description:
-      "Benjamin Cowen이 운영. 비트코인 사이클 분석, 온체인 메트릭, 리스크 모델 등 데이터 중심의 장기 투자 관점을 제공.",
+      "비트코인 사이클 분석, 온체인 메트릭, 리스크 모델 등 데이터 중심의 장기 투자 관점을 제공.",
     tags: ["Bitcoin", "On-Chain", "Cycles"],
     region: "international",
   },

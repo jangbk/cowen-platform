@@ -101,8 +101,8 @@
 ### Installation
 
 ```bash
-git clone https://github.com/jangbk/cowen-platform.git
-cd cowen-platform
+git clone https://github.com/jangbk/jangbk-platform.git
+cd jangbk-platform
 npm install
 ```
 
@@ -212,4 +212,4 @@ MIT
 ---
 
 Built with Next.js, TypeScript, and Tailwind CSS.
-Inspired by [Into The Cryptoverse](https://intothecryptoverse.com) by Benjamin Cowen.
+Built by JangBK.

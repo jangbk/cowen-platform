@@ -599,26 +599,63 @@ export default function CryptoIndicatorsPage() {
 
       {/* Signal Summary Bar */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 flex items-center gap-3">
-          <TrendingUp className="h-8 w-8 text-green-500" />
-          <div>
-            <p className="text-2xl font-bold text-green-500">{bullish}</p>
-            <p className="text-sm text-muted-foreground">Bullish Signals</p>
+        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <TrendingUp className="h-8 w-8 text-green-500" />
+            <div>
+              <p className="text-2xl font-bold text-green-500">{bullish}</p>
+              <p className="text-sm text-muted-foreground">Bullish Signals</p>
+            </div>
           </div>
+          {indicators.filter((i) => i.status === "bullish").length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-2 border-t border-green-500/20">
+              {indicators.filter((i) => i.status === "bullish").map((i) => (
+                <span key={i.name} className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
+                  {i.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-center gap-3">
-          <Minus className="h-8 w-8 text-yellow-500" />
-          <div>
-            <p className="text-2xl font-bold text-yellow-500">{neutral}</p>
-            <p className="text-sm text-muted-foreground">Neutral / Caution</p>
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Minus className="h-8 w-8 text-yellow-500" />
+            <div>
+              <p className="text-2xl font-bold text-yellow-500">{neutral}</p>
+              <p className="text-sm text-muted-foreground">Neutral / Caution</p>
+            </div>
           </div>
+          {indicators.filter((i) => i.status === "neutral" || i.status === "caution").length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-2 border-t border-yellow-500/20">
+              {indicators.filter((i) => i.status === "neutral" || i.status === "caution").map((i) => (
+                <span key={i.name} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  i.status === "caution"
+                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                }`}>
+                  {i.name}{i.status === "caution" ? " ⚠" : ""}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
-          <TrendingDown className="h-8 w-8 text-red-500" />
-          <div>
-            <p className="text-2xl font-bold text-red-500">{bearish}</p>
-            <p className="text-sm text-muted-foreground">Bearish Signals</p>
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <TrendingDown className="h-8 w-8 text-red-500" />
+            <div>
+              <p className="text-2xl font-bold text-red-500">{bearish}</p>
+              <p className="text-sm text-muted-foreground">Bearish Signals</p>
+            </div>
           </div>
+          {indicators.filter((i) => i.status === "bearish").length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-2 border-t border-red-500/20">
+              {indicators.filter((i) => i.status === "bearish").map((i) => (
+                <span key={i.name} className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+                  {i.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -760,7 +797,9 @@ export default function CryptoIndicatorsPage() {
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[10px] text-muted-foreground">Risk: {(ind.risk * 100).toFixed(0)}%</span>
-                <span className="text-[10px] text-muted-foreground">{ind.source}</span>
+                <span className={`text-[10px] font-semibold ${colors.text}`}>
+                  {ind.status === "bullish" ? "▲ Bullish" : ind.status === "bearish" ? "▼ Bearish" : ind.status === "caution" ? "◆ Caution" : "● Neutral"}
+                </span>
               </div>
               {showInfo === ind.name && (
                 <p className="mt-2 text-xs text-muted-foreground border-t border-border pt-2">{ind.description}</p>
@@ -809,9 +848,14 @@ export default function CryptoIndicatorsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors.bg} ${colors.text}`}>
-                        {ind.label}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors.bg} ${colors.text}`}>
+                          {ind.label}
+                        </span>
+                        <span className={`text-[10px] font-semibold ${colors.text}`}>
+                          {ind.status === "bullish" ? "▲ Bullish" : ind.status === "bearish" ? "▼ Bearish" : ind.status === "caution" ? "◆ Caution" : "● Neutral"}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-center">
                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${freshnessConfig[ind.freshness].color}`}>

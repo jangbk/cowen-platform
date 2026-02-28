@@ -27,13 +27,21 @@ export default function MetalsPage() {
   const [metals, setMetals] = useState<Metal[]>(FALLBACK_METALS);
   const [dataSource, setDataSource] = useState<string>("loading");
   const [isLoading, setIsLoading] = useState(true);
+  const [btcPrice, setBtcPrice] = useState<number | null>(null);
+  const [sp500Price, setSp500Price] = useState<number | null>(null);
 
   useEffect(() => {
-    async function fetchMetals() {
-      try {
-        const res = await fetch("/api/tradfi/quotes?type=metal");
-        if (!res.ok) throw new Error("API error");
-        const json = await res.json();
+    async function fetchAll() {
+      // Fetch metals, BTC price, and S&P 500 in parallel
+      const [metalsRes, btcRes, sp500Res] = await Promise.allSettled([
+        fetch("/api/tradfi/quotes?type=metal").then((r) => r.json()),
+        fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", { signal: AbortSignal.timeout(6000) }).then((r) => r.json()),
+        fetch("/api/macro/indicators?indicator=sp500", { signal: AbortSignal.timeout(6000) }).then((r) => r.json()),
+      ]);
+
+      // Metals
+      if (metalsRes.status === "fulfilled") {
+        const json = metalsRes.value;
         if (json.data && json.data.length > 0) {
           const mapped: Metal[] = json.data.map((d: { symbol: string; name: string; price: number; change: number; changeAbs: number; unit?: string; high52w: number; low52w: number }) => ({
             symbol: d.symbol,
@@ -50,13 +58,27 @@ export default function MetalsPage() {
         } else {
           setDataSource("fallback");
         }
-      } catch {
+      } else {
         setDataSource("fallback");
-      } finally {
-        setIsLoading(false);
       }
+
+      // BTC price
+      if (btcRes.status === "fulfilled" && btcRes.value?.bitcoin?.usd) {
+        setBtcPrice(btcRes.value.bitcoin.usd);
+      }
+
+      // S&P 500
+      if (sp500Res.status === "fulfilled" && sp500Res.value?.data) {
+        const spData = sp500Res.value.data;
+        if (Array.isArray(spData) && spData.length > 0) {
+          const lastVal = parseFloat(spData[spData.length - 1].value);
+          if (!isNaN(lastVal)) setSp500Price(lastVal);
+        }
+      }
+
+      setIsLoading(false);
     }
-    fetchMetals();
+    fetchAll();
   }, []);
 
   // Calculate ratios dynamically from real data
@@ -65,10 +87,30 @@ export default function MetalsPage() {
   const goldPrice = gold?.price || 2842;
   const silverPrice = silver?.price || 32.84;
 
+  const goldSilverRatio = silverPrice > 0 ? goldPrice / silverPrice : null;
+  const goldBtcRatio = btcPrice && btcPrice > 0 ? goldPrice / btcPrice : null;
+  const goldSp500Ratio = sp500Price && sp500Price > 0 ? goldPrice / sp500Price : null;
+
   const RATIOS = [
-    { name: "Gold/Silver Ratio", value: silverPrice > 0 ? (goldPrice / silverPrice).toFixed(1) : "—", desc: "Historical avg: ~60" },
-    { name: "Gold/BTC Ratio", value: "CoinGecko", desc: "1oz Gold in BTC" },
-    { name: "Gold/S&P 500 Ratio", value: "Yahoo", desc: "Gold relative to equities" },
+    {
+      name: "Gold/Silver Ratio",
+      value: goldSilverRatio ? goldSilverRatio.toFixed(1) : "—",
+      desc: `금 1oz 당 은 ${goldSilverRatio ? goldSilverRatio.toFixed(1) : "?"}oz 가치. 역사적 평균 ~60. ${goldSilverRatio && goldSilverRatio > 80 ? "높음 → 은이 상대적 저평가" : goldSilverRatio && goldSilverRatio < 50 ? "낮음 → 은이 상대적 고평가" : "정상 범위"}`,
+    },
+    {
+      name: "Gold/BTC Ratio",
+      value: goldBtcRatio ? goldBtcRatio.toFixed(4) : "—",
+      desc: btcPrice
+        ? `금 1oz = ${goldBtcRatio?.toFixed(4)} BTC (BTC $${btcPrice.toLocaleString()}). ${goldBtcRatio && goldBtcRatio < 0.03 ? "BTC가 금 대비 강세" : goldBtcRatio && goldBtcRatio > 0.05 ? "BTC가 금 대비 약세" : "BTC와 금 간 밸런스 구간"}`
+        : "BTC 가격 로딩 실패",
+    },
+    {
+      name: "Gold/S&P 500 Ratio",
+      value: goldSp500Ratio ? goldSp500Ratio.toFixed(2) : "—",
+      desc: sp500Price
+        ? `금/S&P 500 = ${goldSp500Ratio?.toFixed(2)} (S&P ${sp500Price.toFixed(0)}). ${goldSp500Ratio && goldSp500Ratio > 0.6 ? "금이 주식 대비 강세 → 안전자산 선호" : goldSp500Ratio && goldSp500Ratio < 0.4 ? "주식이 금 대비 강세 → 위험자산 선호" : "균형 구간"}`
+        : "S&P 500 로딩 실패",
+    },
   ];
 
   return (

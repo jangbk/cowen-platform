@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
+  Info,
 } from "lucide-react";
 
 interface Strategy {
@@ -24,6 +25,7 @@ interface Strategy {
   name: string;
   description: string;
   params: string[];
+  paramHints?: string[];
   isBotStrategy?: boolean;
 }
 
@@ -34,36 +36,66 @@ const STRATEGIES: Strategy[] = [
     name: "변동성 돌파 (Larry Williams)",
     description: "전일 변동폭의 K% 이상 돌파 시 매수, 익일 시가 매도",
     params: ["K값 (0.3~0.8)", "투자비율 (%)", "손절선 (%)"],
+    paramHints: [
+      "전일 변동폭 대비 돌파 기준. 낮을수록 진입 빈번, 높을수록 보수적",
+      "보유 현금 중 한 번에 투자할 비율",
+      "매수 후 이 비율만큼 하락하면 손절 매도",
+    ],
   },
   {
     id: "trend-following",
     name: "추세추종 (이동평균 크로스)",
     description: "단기 MA가 장기 MA를 상향/하향 돌파 시 매수/매도",
     params: ["단기 MA", "장기 MA", "필터 기간"],
+    paramHints: [
+      "단기 이동평균 기간 (일). 작을수록 민감하게 반응",
+      "장기 이동평균 기간 (일). 클수록 큰 추세만 포착",
+      "크로스 후 확인 기간. 가짜 신호 필터링",
+    ],
   },
   {
     id: "mean-reversion",
     name: "평균회귀 (볼린저 밴드)",
     description: "하단 밴드 터치 시 매수, 상단 밴드 터치 시 매도",
     params: ["기간", "표준편차 배수", "진입 조건"],
+    paramHints: [
+      "볼린저 밴드 중심선(SMA) 계산 기간",
+      "밴드 폭 결정. 2.0이 표준, 높을수록 밴드가 넓어짐",
+      "밴드 터치/돌파 등 진입 조건 설정",
+    ],
   },
   {
     id: "momentum",
     name: "모멘텀 전략 (RSI + MACD)",
     description: "RSI 과매도 + MACD 골든크로스 조합 신호",
     params: ["RSI 기간", "RSI 과매도", "MACD 단기/장기"],
+    paramHints: [
+      "RSI 계산 기간. 14가 표준, 짧으면 민감",
+      "과매도 기준값. 30 이하가 일반적",
+      "MACD의 단기/장기 EMA 기간 (예: 12/26)",
+    ],
   },
   {
     id: "dca-dynamic",
     name: "동적 DCA (리스크 기반)",
     description: "리스크 지표에 따라 투자 금액을 동적으로 조절하는 DCA",
     params: ["기본 투자금", "리스크 배수", "매수 주기"],
+    paramHints: [
+      "한 회차 기본 투자 금액 (원)",
+      "리스크 점수에 따라 투자금을 조절하는 배수",
+      "정기 매수 주기 (일 단위)",
+    ],
   },
   {
     id: "grid-trading",
     name: "그리드 트레이딩",
     description: "일정 가격 간격으로 매수/매도 주문을 설정하는 전략",
     params: ["그리드 수", "상한가", "하한가"],
+    paramHints: [
+      "상한~하한 사이에 배치할 주문 개수. 많을수록 촘촘",
+      "그리드 상단 가격 (이 위에서는 매도만)",
+      "그리드 하단 가격 (이 아래에서는 매수만)",
+    ],
   },
   // --- 가동 중인 봇 ---
   {
@@ -71,6 +103,11 @@ const STRATEGIES: Strategy[] = [
     name: "🤖 Seykota EMA Bot (빗썸)",
     description: "EMA100 + ATR 동적밴드 추세추종 — 실제 가동 중",
     params: ["EMA 기간", "ATR 배수", "ATR 기간"],
+    paramHints: [
+      "지수이동평균 기간 (일). 추세의 중심선을 결정. 클수록 장기 추세",
+      "ATR에 곱하는 배수. 매수/매도 밴드 폭을 결정. 클수록 보수적",
+      "평균 변동폭(ATR) 계산 기간 (일). 최근 변동성 민감도 조절",
+    ],
     isBotStrategy: true,
   },
   {
@@ -78,6 +115,11 @@ const STRATEGIES: Strategy[] = [
     name: "🤖 PTJ 200MA Bot (코인원)",
     description: "EMA200 + ATR 동적밴드 추세추종 — 실제 가동 중",
     params: ["EMA 기간", "ATR 배수", "ATR 기간"],
+    paramHints: [
+      "지수이동평균 기간 (일). 200일이 장기 추세의 표준 기준선",
+      "ATR에 곱하는 배수. 매수/매도 밴드 폭을 결정. 클수록 보수적",
+      "평균 변동폭(ATR) 계산 기간 (일). 최근 변동성 민감도 조절",
+    ],
     isBotStrategy: true,
   },
   {
@@ -85,6 +127,11 @@ const STRATEGIES: Strategy[] = [
     name: "🤖 KIS RSI/MACD Bot (한투)",
     description: "MACD 크로스 + EMA 트렌드 필터 — 실제 가동 중",
     params: ["MACD 단기/장기/시그널", "EMA 필터", "손절 (%)"],
+    paramHints: [
+      "MACD 계산용 단기/장기/시그널 EMA 기간 (예: 12/26/9)",
+      "트렌드 필터 EMA 기간. 가격이 이 위에 있을 때만 매수",
+      "매수 후 이 비율만큼 하락하면 강제 매도 (손실 제한)",
+    ],
     isBotStrategy: true,
   },
 ];
@@ -1014,6 +1061,11 @@ export default function BacktestPage() {
                 }}
                 className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
+              {strategy.paramHints?.[i] && (
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground/60">
+                  {strategy.paramHints[i]}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -1360,15 +1412,23 @@ export default function BacktestPage() {
                 </h4>
                 <div className="space-y-2">
                   {[
-                    ["총 수익률", `${r.totalReturn >= 0 ? "+" : ""}${r.totalReturn}%`],
-                    ["연환산 수익률", `${r.annualizedReturn >= 0 ? "+" : ""}${r.annualizedReturn}%`],
-                    ["벤치마크 수익률", `${r.benchmarkReturn >= 0 ? "+" : ""}${r.benchmarkReturn}%`],
-                    ["Alpha", `${r.alpha >= 0 ? "+" : ""}${r.alpha}%`],
-                    ["Beta", r.beta.toFixed(2)],
-                    ["최종 자본", `${(r.finalCapital / 10000).toLocaleString()}만원`],
-                  ].map(([label, value]) => (
+                    ["총 수익률", `${r.totalReturn >= 0 ? "+" : ""}${r.totalReturn}%`, "투자 시작부터 종료까지의 전체 누적 수익률"],
+                    ["연환산 수익률", `${r.annualizedReturn >= 0 ? "+" : ""}${r.annualizedReturn}%`, "총 수익률을 연 단위로 환산한 복리 수익률 (CAGR)"],
+                    ["벤치마크 수익률", `${r.benchmarkReturn >= 0 ? "+" : ""}${r.benchmarkReturn}%`, "같은 기간 해당 자산을 단순 매수 보유(Buy & Hold)했을 때의 수익률"],
+                    ["Alpha", `${r.alpha >= 0 ? "+" : ""}${r.alpha}%`, "벤치마크 대비 초과 수익률. 양수면 시장을 이긴 전략"],
+                    ["Beta", r.beta.toFixed(2), "시장 대비 변동성 민감도. 1 미만이면 시장보다 덜 변동"],
+                    ["최종 자본", `${(r.finalCapital / 10000).toLocaleString()}만원`, "백테스트 종료 시점의 총 자산 가치"],
+                  ].map(([label, value, desc]) => (
                     <div key={label} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{label}</span>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        {label}
+                        <span className="relative group/tip">
+                          <Info className="h-3 w-3 text-muted-foreground/40 hover:text-primary cursor-help transition-colors" />
+                          <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover/tip:block w-52 rounded-lg px-3 py-2 text-xs leading-relaxed shadow-lg z-50 bg-zinc-800 text-zinc-100 dark:bg-zinc-100 dark:text-zinc-800 before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[5px] before:border-transparent before:border-r-zinc-800 dark:before:border-r-zinc-100">
+                            {desc}
+                          </span>
+                        </span>
+                      </span>
                       <span className="font-mono font-medium">{value}</span>
                     </div>
                   ))}
@@ -1382,15 +1442,23 @@ export default function BacktestPage() {
                 </h4>
                 <div className="space-y-2">
                   {[
-                    ["최대 낙폭 (MDD)", `${r.maxDrawdown}%`],
-                    ["샤프 비율", r.sharpeRatio.toFixed(2)],
-                    ["소르티노 비율", r.sortinoRatio.toFixed(2)],
-                    ["칼마 비율", r.calmarRatio.toFixed(2)],
-                    ["Profit Factor", r.profitFactor.toFixed(2)],
-                    ["평균 보유 기간", `${r.avgHoldingDays}일`],
-                  ].map(([label, value]) => (
+                    ["최대 낙폭 (MDD)", `${r.maxDrawdown}%`, "고점 대비 최대 하락폭. 투자 중 겪을 수 있는 최악의 손실"],
+                    ["샤프 비율", r.sharpeRatio.toFixed(2), "위험 대비 수익. 1 이상이면 양호, 2 이상이면 우수"],
+                    ["소르티노 비율", r.sortinoRatio.toFixed(2), "하방 위험만 고려한 샤프 비율. 하락 변동성 대비 수익 측정"],
+                    ["칼마 비율", r.calmarRatio.toFixed(2), "연환산 수익률 ÷ MDD. 낙폭 대비 수익 효율 측정"],
+                    ["Profit Factor", r.profitFactor.toFixed(2), "총 수익 ÷ 총 손실. 1 이상이면 수익이 손실보다 큰 전략"],
+                    ["평균 보유 기간", `${r.avgHoldingDays}일`, "한 포지션의 평균 유지 기간 (진입~청산)"],
+                  ].map(([label, value, desc]) => (
                     <div key={label} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{label}</span>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        {label}
+                        <span className="relative group/tip">
+                          <Info className="h-3 w-3 text-muted-foreground/40 hover:text-primary cursor-help transition-colors" />
+                          <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover/tip:block w-52 rounded-lg px-3 py-2 text-xs leading-relaxed shadow-lg z-50 bg-zinc-800 text-zinc-100 dark:bg-zinc-100 dark:text-zinc-800 before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[5px] before:border-transparent before:border-r-zinc-800 dark:before:border-r-zinc-100">
+                            {desc}
+                          </span>
+                        </span>
+                      </span>
                       <span className="font-mono font-medium">{value}</span>
                     </div>
                   ))}
@@ -1404,17 +1472,25 @@ export default function BacktestPage() {
                 </h4>
                 <div className="space-y-2">
                   {[
-                    ["총 거래 수", `${r.totalTrades}회`],
-                    ["승률", `${r.winRate}%`],
-                    ["수익 거래", `${r.profitTrades}회`],
-                    ["손실 거래", `${r.lossTrades}회`],
-                    ["평균 수익", `+${r.avgWin}%`],
-                    ["평균 손실", `${r.avgLoss}%`],
-                    ["최대 연속 수익", `${r.maxConsecutiveWins}회`],
-                    ["최대 연속 손실", `${r.maxConsecutiveLosses}회`],
-                  ].map(([label, value]) => (
+                    ["총 거래 수", `${r.totalTrades}회`, "백테스트 기간 동안 실행된 전체 매매 횟수"],
+                    ["승률", `${r.winRate}%`, "전체 거래 중 수익을 낸 거래의 비율"],
+                    ["수익 거래", `${r.profitTrades}회`, "수익으로 마감된 거래 횟수"],
+                    ["손실 거래", `${r.lossTrades}회`, "손실로 마감된 거래 횟수"],
+                    ["평균 수익", `+${r.avgWin}%`, "수익 거래의 평균 수익률"],
+                    ["평균 손실", `${r.avgLoss}%`, "손실 거래의 평균 손실률"],
+                    ["최대 연속 수익", `${r.maxConsecutiveWins}회`, "연속으로 수익을 낸 최대 거래 횟수"],
+                    ["최대 연속 손실", `${r.maxConsecutiveLosses}회`, "연속으로 손실을 낸 최대 횟수. 심리적 압박 지표"],
+                  ].map(([label, value, desc]) => (
                     <div key={label} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{label}</span>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        {label}
+                        <span className="relative group/tip">
+                          <Info className="h-3 w-3 text-muted-foreground/40 hover:text-primary cursor-help transition-colors" />
+                          <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover/tip:block w-52 rounded-lg px-3 py-2 text-xs leading-relaxed shadow-lg z-50 bg-zinc-800 text-zinc-100 dark:bg-zinc-100 dark:text-zinc-800 before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[5px] before:border-transparent before:border-r-zinc-800 dark:before:border-r-zinc-100">
+                            {desc}
+                          </span>
+                        </span>
+                      </span>
                       <span className="font-mono font-medium">{value}</span>
                     </div>
                   ))}

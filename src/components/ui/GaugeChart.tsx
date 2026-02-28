@@ -5,6 +5,7 @@ import { useMemo } from "react";
 interface GaugeChartProps {
   value: number; // 0 to 1
   label: string;
+  displayValue?: string; // Override displayed value text
   subMetrics?: Array<{ label: string; value: number; color: string }>;
   size?: "sm" | "md" | "lg";
 }
@@ -25,6 +26,7 @@ const sizeMap = {
 export default function GaugeChart({
   value,
   label,
+  displayValue,
   subMetrics,
   size = "md",
 }: GaugeChartProps) {
@@ -141,7 +143,7 @@ export default function GaugeChart({
 
       {/* Value */}
       <span className="mt-1 text-2xl font-bold tabular-nums">
-        {value.toFixed(3)}
+        {displayValue ?? value.toFixed(3)}
       </span>
 
       {/* Label */}

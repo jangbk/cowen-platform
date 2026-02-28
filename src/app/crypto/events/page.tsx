@@ -51,20 +51,21 @@ const FALLBACK_EVENTS: CryptoEvent[] = [
 
 const CATEGORIES = [
   "All",
-  "Hard Fork",
   "Release",
-  "Regulation",
-  "Conference",
-  "Token Burn",
-  "Halving",
-  "Governance",
-  "Airdrop",
+  "Exchange",
+  "Tokenomics",
   "Partnership",
-  "Exchange Listing",
+  "Fork/Swap",
+  "Airdrop/Snapshot",
+  "Staking/Farming",
+  "Conference",
+  "Integration",
+  "AMA",
+  "Team Update",
+  "Other",
 ];
 
-const COINS_FILTER = [
-  "All",
+const DEFAULT_COINS = [
   "BTC",
   "ETH",
   "SOL",
@@ -73,8 +74,6 @@ const COINS_FILTER = [
   "BNB",
   "LINK",
   "AVAX",
-  "TRX",
-  "POL",
 ];
 
 function getImportanceColor(importance: string) {
@@ -105,20 +104,24 @@ function getImportanceDot(importance: string) {
 
 function getCategoryIcon(category: string) {
   switch (category) {
-    case "Hard Fork":
     case "Release":
+    case "Fork/Swap":
       return <Zap className="h-4 w-4" />;
-    case "Regulation":
-      return <Globe className="h-4 w-4" />;
-    case "Token Burn":
-    case "Halving":
+    case "Exchange":
+      return <ArrowUpDown className="h-4 w-4" />;
+    case "Tokenomics":
+    case "Staking/Farming":
       return <Coins className="h-4 w-4" />;
     case "Conference":
+    case "AMA":
       return <Globe className="h-4 w-4" />;
-    case "Governance":
+    case "Partnership":
+    case "Integration":
       return <Star className="h-4 w-4" />;
-    default:
+    case "Airdrop/Snapshot":
       return <TrendingUp className="h-4 w-4" />;
+    default:
+      return <Clock className="h-4 w-4" />;
   }
 }
 
@@ -201,6 +204,10 @@ export default function CryptoEventsPage() {
     fetchEvents();
   }, []);
 
+  // Build dynamic category and coin lists from actual data
+  const dynamicCategories = ["All", ...Array.from(new Set(events.map((e) => e.category))).sort()];
+  const dynamicCoins = ["All", ...Array.from(new Set(events.map((e) => e.coin))).sort()];
+
   const filteredEvents = events.filter((event) => {
     if (selectedCategory !== "All" && event.category !== selectedCategory)
       return false;
@@ -233,7 +240,7 @@ export default function CryptoEventsPage() {
 
   function getEventsForDay(day: number) {
     const dateStr = `${calendarYear}-${String(calendarMo + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return filteredEvents.filter((e) => e.date === dateStr);
+    return filteredEvents.filter((e) => e.date.startsWith(dateStr));
   }
 
   return (
@@ -355,14 +362,14 @@ export default function CryptoEventsPage() {
           onChange={(e) => setSelectedCoin(e.target.value)}
           className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
         >
-          {COINS_FILTER.map((coin) => (
+          {dynamicCoins.map((coin) => (
             <option key={coin} value={coin}>
               {coin === "All" ? "모든 코인" : coin}
             </option>
           ))}
         </select>
         <div className="flex flex-wrap gap-1">
-          {CATEGORIES.map((cat) => (
+          {dynamicCategories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}

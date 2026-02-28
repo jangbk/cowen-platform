@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
 import {
   type Trade,
   calcTotalReturn,
@@ -17,38 +19,48 @@ const API_KEY = process.env.BITHUMB_API_KEY ?? "";
 const SECRET_KEY = process.env.BITHUMB_SECRET_KEY ?? "";
 const BASE_URL = "https://api.bithumb.com";
 
-function createSignature(
-  endpoint: string,
-  params: Record<string, string>,
-  timestamp: string
-): string {
-  const queryString = new URLSearchParams(params).toString();
-  const hmacData =
-    endpoint + String.fromCharCode(0) + queryString + String.fromCharCode(0) + timestamp;
-  return crypto
-    .createHmac("sha512", SECRET_KEY)
-    .update(hmacData)
-    .digest("hex");
+// --- JWT 생성 (Open API 2.0) ---
+function base64url(input: Buffer): string {
+  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function bithumbRequest(
-  endpoint: string,
-  params: Record<string, string> = {}
-): Promise<Record<string, unknown>> {
-  const timestamp = Date.now().toString();
-  const nonce = timestamp;
-  const signature = createSignature(endpoint, params, timestamp);
+function createJWT(payload: Record<string, unknown>): string {
+  const header = base64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const body = base64url(Buffer.from(JSON.stringify(payload)));
+  const signature = base64url(
+    crypto.createHmac("sha256", SECRET_KEY).update(`${header}.${body}`).digest()
+  );
+  return `${header}.${body}.${signature}`;
+}
 
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    method: "POST",
+function getAuthHeader(queryString?: string): string {
+  const payload: Record<string, unknown> = {
+    access_key: API_KEY,
+    nonce: crypto.randomUUID(),
+    timestamp: Date.now(),
+  };
+
+  if (queryString) {
+    payload.query_hash = crypto.createHash("sha512").update(queryString, "utf-8").digest("hex");
+    payload.query_hash_alg = "SHA512";
+  }
+
+  return `Bearer ${createJWT(payload)}`;
+}
+
+// --- API 2.0 요청 ---
+async function bithumbGet(
+  endpoint: string,
+  params?: Record<string, string>
+): Promise<unknown> {
+  const queryString = params ? new URLSearchParams(params).toString() : "";
+  const url = queryString ? `${BASE_URL}${endpoint}?${queryString}` : `${BASE_URL}${endpoint}`;
+
+  const res = await fetch(url, {
+    method: "GET",
     headers: {
-      "Api-Key": API_KEY,
-      "Api-Sign": signature,
-      "Api-Timestamp": timestamp,
-      "Api-Nonce": nonce,
-      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: getAuthHeader(queryString || undefined),
     },
-    body: new URLSearchParams(params).toString(),
   });
 
   return res.json();
@@ -63,35 +75,31 @@ export async function GET() {
   }
 
   try {
-    // Parallel: balance + transactions
-    const [balanceRes, txRes] = await Promise.all([
-      bithumbRequest("/info/balance", {
-        order_currency: "BTC",
-        payment_currency: "KRW",
-      }),
-      bithumbRequest("/info/user_transactions", {
-        order_currency: "BTC",
-        payment_currency: "KRW",
-        searchGb: "0", // all
-        offset: "0",
-        count: "50",
-      }),
+    // 1. 잔고 조회 (v1/accounts) + BTC 시세 (public)
+    const [accountsRes, tickerRes] = await Promise.all([
+      bithumbGet("/v1/accounts"),
+      fetch(`${BASE_URL}/public/ticker/BTC_KRW`).then((r) => r.json()),
     ]);
 
-    if (balanceRes.status !== "0000") {
-      throw new Error(`Bithumb balance error: ${balanceRes.message}`);
+    const accounts = accountsRes as Array<{
+      currency: string;
+      balance: string;
+      locked: string;
+      avg_buy_price: string;
+    }>;
+
+    if (!Array.isArray(accounts)) {
+      throw new Error(`Bithumb accounts error: ${JSON.stringify(accountsRes)}`);
     }
 
-    const balData = balanceRes.data as Record<string, string>;
-    const totalBtc = parseFloat(balData.total_btc || "0");
-    const availableBtc = parseFloat(balData.available_btc || "0");
-    const totalKrw = parseFloat(balData.total_krw || "0");
-    const availableKrw = parseFloat(balData.available_krw || "0");
+    const btcAccount = accounts.find((a) => a.currency === "BTC");
+    const krwAccount = accounts.find((a) => a.currency === "KRW");
 
-    // Get current BTC price from public ticker
-    const tickerRes = await fetch(
-      `${BASE_URL}/public/ticker/BTC_KRW`
-    ).then((r) => r.json());
+    const totalBtc = parseFloat(btcAccount?.balance || "0") + parseFloat(btcAccount?.locked || "0");
+    const availableBtc = parseFloat(btcAccount?.balance || "0");
+    const totalKrw = parseFloat(krwAccount?.balance || "0") + parseFloat(krwAccount?.locked || "0");
+    const availableKrw = parseFloat(krwAccount?.balance || "0");
+
     const currentPrice = parseFloat(
       (tickerRes.data as Record<string, string>)?.closing_price || "0"
     );
@@ -99,35 +107,53 @@ export async function GET() {
     const btcValueKrw = totalBtc * currentPrice;
     const currentValue = btcValueKrw + totalKrw;
 
-    // Parse transactions into Trade format
+    // 2. 주문 내역 조회 (체결 완료된 것)
+    const ordersRes = await bithumbGet("/v1/orders", {
+      market: "KRW-BTC",
+      state: "done",
+      limit: "50",
+      order_by: "desc",
+    });
+
+    const orders = Array.isArray(ordersRes) ? ordersRes as Array<{
+      uuid: string;
+      side: string;
+      ord_type: string;
+      price: string;
+      state: string;
+      volume: string;
+      remaining_volume: string;
+      executed_volume: string;
+      trades_count: number;
+      created_at: string;
+      paid_fee: string;
+    }> : [];
+
+    // Parse orders into Trade format
     const trades: Trade[] = [];
-    const txList = (txRes.data as Array<Record<string, string>>) ?? [];
+    for (const order of orders) {
+      const isBuy = order.side === "bid";
+      const executedVolume = parseFloat(order.executed_volume || "0");
+      if (executedVolume <= 0) continue;
 
-    for (const tx of txList) {
-      // type: 1=buy, 2=sell
-      const txType = tx.search;
-      if (txType !== "1" && txType !== "2") continue;
-
-      const price = Math.abs(parseFloat(tx.price || "0"));
-      const units = Math.abs(parseFloat(tx[`units`] || tx.units || "0"));
-      const total = Math.abs(parseFloat(tx.total || "0"));
-      const fee = parseFloat(tx.fee || "0");
+      const price = parseFloat(order.price || "0");
+      const fee = parseFloat(order.paid_fee || "0");
+      const amount = price * executedVolume;
 
       trades.push({
-        time: tx.transfer_date || "",
-        type: txType === "1" ? "buy" : "sell",
+        time: order.created_at?.replace("T", " ").slice(0, 19) || "",
+        type: isBuy ? "buy" : "sell",
         price,
-        qty: units,
-        amount: total,
-        fee: Math.abs(fee),
-        pnl: txType === "2" ? total - fee : undefined,
+        qty: executedVolume,
+        amount,
+        fee,
       });
     }
 
     // Pair buy/sell for P&L calculation
     const pairedTrades = pairTradesForPnL(trades);
 
-    // Initial capital estimate: current value minus total realized P&L
+    // Initial capital estimate
     const realizedPnL = pairedTrades
       .filter((t) => t.pnl !== undefined)
       .reduce((s, t) => s + (t.pnl ?? 0), 0);
@@ -143,7 +169,7 @@ export async function GET() {
     const botStrategy = {
       id: "seykota-ema",
       name: "Seykota EMA Bot",
-      description: "EMA 15/150 추세추종 전략",
+      description: "EMA 100 + ATR 동적밴드 추세추종 전략",
       asset: "BTC/KRW",
       exchange: "Bithumb",
       status: "active" as const,
@@ -200,17 +226,13 @@ export async function GET() {
   }
 }
 
-/**
- * Pair buy→sell transactions to calculate per-trade P&L.
- */
 function pairTradesForPnL(trades: Trade[]): Trade[] {
-  // Sort chronologically (oldest first)
   const sorted = [...trades].sort(
     (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
   );
 
   const result: Trade[] = [];
-  let buyQueue: Trade[] = [];
+  const buyQueue: Trade[] = [];
 
   for (const t of sorted) {
     if (t.type === "buy") {
@@ -229,6 +251,5 @@ function pairTradesForPnL(trades: Trade[]): Trade[] {
     }
   }
 
-  // Return newest first for display
   return result.reverse();
 }
