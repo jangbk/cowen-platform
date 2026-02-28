@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Bot,
   TrendingUp,
@@ -14,6 +14,7 @@ import {
   Wifi,
   WifiOff,
   Loader2,
+  Pencil,
 } from "lucide-react";
 
 interface BotStrategy {
@@ -57,9 +58,9 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
     asset: "BTC/KRW",
     exchange: "Bithumb",
     status: "active",
-    startDate: "2025-06-01",
-    initialCapital: 5000000,
-    currentValue: 6920000,
+    startDate: "2026-01-20",
+    initialCapital: 3500000,
+    currentValue: 3530000,
     totalReturn: 38.4,
     monthlyReturn: 3.5,
     maxDrawdown: -15.7,
@@ -93,8 +94,8 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
     asset: "BTC/KRW",
     exchange: "Coinone",
     status: "active",
-    startDate: "2025-09-01",
-    initialCapital: 8000000,
+    startDate: "2026-01-20",
+    initialCapital: 2500000,
     currentValue: 9680000,
     totalReturn: 21.0,
     monthlyReturn: 2.8,
@@ -130,7 +131,7 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
     exchange: "한국투자증권",
     status: "active",
     startDate: "2025-04-01",
-    initialCapital: 20000000,
+    initialCapital: 100000000,
     currentValue: 22100000,
     totalReturn: 10.5,
     monthlyReturn: 1.2,
@@ -160,6 +161,30 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
   },
 ];
 
+/** 금액을 한국식으로 포맷 (억/만원 단위) */
+function formatKRW(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 100_000_000) {
+    const eok = Math.floor(abs / 100_000_000);
+    const remainder = abs % 100_000_000;
+    const man = Math.floor(remainder / 10_000);
+    const won = Math.round(remainder % 10_000);
+    if (man > 0 && won > 0) return `${sign}${eok}억 ${man.toLocaleString()}만 ${won.toLocaleString()}원`;
+    if (man > 0) return `${sign}${eok}억 ${man.toLocaleString()}만원`;
+    if (won > 0) return `${sign}${eok}억 ${won.toLocaleString()}원`;
+    return `${sign}${eok}억원`;
+  }
+  if (abs >= 10_000) {
+    const man = Math.floor(abs / 10_000);
+    const won = Math.round(abs % 10_000);
+    return won > 0
+      ? `${sign}${man.toLocaleString()}만 ${won.toLocaleString()}원`
+      : `${sign}${man.toLocaleString()}만원`;
+  }
+  return `${sign}${Math.round(abs).toLocaleString()}원`;
+}
+
 function getStatusBadge(status: string) {
   if (status === "active")
     return (
@@ -183,12 +208,46 @@ function getStatusBadge(status: string) {
   );
 }
 
+const CAPITALS_KEY = "bot-capitals";
+
 export default function BotPerformancePage() {
   const [strategies, setStrategies] = useState<BotStrategy[]>(FALLBACK_STRATEGIES);
   const [selectedBot, setSelectedBot] = useState(FALLBACK_STRATEGIES[0].id);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // 투자금 수동 오버라이드
+  const [capitalOverrides, setCapitalOverrides] = useState<Record<string, number>>({});
+  const [editingBotId, setEditingBotId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CAPITALS_KEY);
+      if (saved) setCapitalOverrides(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
+  function getCapital(b: BotStrategy): number {
+    return capitalOverrides[b.id] ?? b.initialCapital;
+  }
+
+  function saveCapital(botId: string, won: number) {
+    if (won <= 0) return;
+    const next = { ...capitalOverrides, [botId]: won };
+    setCapitalOverrides(next);
+    localStorage.setItem(CAPITALS_KEY, JSON.stringify(next));
+    setEditingBotId(null);
+  }
+
+  function startEditing(botId: string) {
+    setEditingBotId(botId);
+    const current = capitalOverrides[botId] ?? strategies.find((s) => s.id === botId)?.initialCapital ?? 0;
+    setEditValue(current.toLocaleString());
+    setTimeout(() => editRef.current?.focus(), 50);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -206,7 +265,6 @@ export default function BotPerformancePage() {
           setStrategies(live);
           setIsLive(live.some((s: BotStrategy & { _live?: boolean }) => s._live));
           setLastUpdated(data.timestamp);
-          // Keep selectedBot if it exists in new data, otherwise select first
           if (!live.find((s: BotStrategy) => s.id === selectedBot)) {
             setSelectedBot(live[0].id);
           }
@@ -223,7 +281,6 @@ export default function BotPerformancePage() {
     }
 
     fetchBotData();
-    // Refresh every 60 seconds
     const interval = setInterval(fetchBotData, 60_000);
     return () => {
       cancelled = true;
@@ -233,17 +290,23 @@ export default function BotPerformancePage() {
 
   const bot = strategies.find((b) => b.id === selectedBot) ?? strategies[0];
 
-  // Calculate aggregated stats
-  const totalInvested = strategies.reduce(
-    (sum, b) => sum + b.initialCapital,
-    0
-  );
-  const totalCurrent = strategies.reduce(
-    (sum, b) => sum + b.currentValue,
-    0
-  );
-  const totalPnL = totalCurrent - totalInvested;
-  const totalReturnPct = ((totalPnL / totalInvested) * 100).toFixed(1);
+  // Calculate aggregated stats — 실투자 vs 모의투자 분리
+  const realBots = strategies.filter((b) => b.id !== "kis-rsi-macd");
+  const simBots = strategies.filter((b) => b.id === "kis-rsi-macd");
+
+  const realInvested = realBots.reduce((sum, b) => sum + getCapital(b), 0);
+  const realCurrent = realBots.reduce((sum, b) => sum + b.currentValue, 0);
+  const realPnL = realCurrent - realInvested;
+  const realReturnPct = realInvested > 0
+    ? ((realPnL / realInvested) * 100).toFixed(1)
+    : "0.0";
+
+  const simInvested = simBots.reduce((sum, b) => sum + getCapital(b), 0);
+  const simCurrent = simBots.reduce((sum, b) => sum + b.currentValue, 0);
+  const simPnL = simCurrent - simInvested;
+  const simReturnPct = simInvested > 0
+    ? ((simPnL / simInvested) * 100).toFixed(1)
+    : "0.0";
 
   // Simple equity curve from daily PnL
   const equityCurve = bot.dailyPnL.reduce(
@@ -265,110 +328,189 @@ export default function BotPerformancePage() {
     { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012", pnl: "-" },
   ];
 
+  const effectiveCapital = getCapital(bot);
+  const botPnL = bot.currentValue - effectiveCapital;
+  const botReturnPct = effectiveCapital > 0
+    ? ((botPnL / effectiveCapital) * 100).toFixed(1)
+    : "0.0";
+
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Bot className="h-6 w-6 text-primary" />
-          자동매매 봇 실적
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          운영 중인 자동매매 프로그램의 실시간 성과를 모니터링합니다.
-        </p>
-        <div className="mt-1.5 flex items-center gap-2">
-          {isLoading ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 w-fit">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              데이터 로딩 중...
-            </span>
-          ) : isLive ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 w-fit">
-              <Wifi className="h-3 w-3" />
-              실시간 데이터 연결됨
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400 w-fit">
-              <WifiOff className="h-3 w-3" />
-              데모 데이터 (API 키 미설정)
-            </span>
-          )}
-          {lastUpdated && !isLoading && (
-            <span className="text-xs text-muted-foreground">
-              {new Date(lastUpdated).toLocaleTimeString("ko-KR")} 업데이트
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Aggregate Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <DollarSign className="h-4 w-4" />
-            총 투자금
+      <div className="mb-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Bot className="h-6 w-6 text-primary" />
+            자동매매 봇 실적
+          </h1>
+          <div className="flex items-center gap-2">
+            {isLoading ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                로딩 중
+              </span>
+            ) : isLive ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <Wifi className="h-3 w-3" />
+                실시간
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                <WifiOff className="h-3 w-3" />
+                데모
+              </span>
+            )}
+            {lastUpdated && !isLoading && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(lastUpdated).toLocaleTimeString("ko-KR")}
+              </span>
+            )}
           </div>
-          <p className="mt-1 text-xl font-bold">
-            {(totalInvested / 10000).toLocaleString()}만원
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <BarChart3 className="h-4 w-4" />
-            현재 평가금
-          </div>
-          <p className="mt-1 text-xl font-bold">
-            {(totalCurrent / 10000).toLocaleString()}만원
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <TrendingUp className="h-4 w-4" />총 수익
-          </div>
-          <p
-            className={`mt-1 text-xl font-bold ${totalPnL >= 0 ? "text-positive" : "text-negative"}`}
-          >
-            {totalPnL >= 0 ? "+" : ""}
-            {(totalPnL / 10000).toLocaleString()}만원
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Activity className="h-4 w-4" />총 수익률
-          </div>
-          <p
-            className={`mt-1 text-xl font-bold ${Number(totalReturnPct) >= 0 ? "text-positive" : "text-negative"}`}
-          >
-            {Number(totalReturnPct) >= 0 ? "+" : ""}
-            {totalReturnPct}%
-          </p>
         </div>
       </div>
 
       {/* Bot Selection Tabs */}
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
-        {strategies.map((b) => (
-          <button
-            key={b.id}
-            onClick={() => setSelectedBot(b.id)}
-            className={`shrink-0 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-              selectedBot === b.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border hover:bg-muted"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span>{b.name}</span>
-              {getStatusBadge(b.status)}
-              {(b as BotStrategy & { _live?: boolean })._live && (
-                <Wifi className="h-3 w-3 text-emerald-500" />
-              )}
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        {strategies.map((b) => {
+          const cap = getCapital(b);
+          const pnl = b.currentValue - cap;
+          const ret = cap > 0 ? ((pnl / cap) * 100).toFixed(1) : "0.0";
+          return (
+            <button
+              key={b.id}
+              onClick={() => setSelectedBot(b.id)}
+              className={`shrink-0 rounded-lg border px-4 py-3 text-left transition-colors ${
+                selectedBot === b.id
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border hover:bg-muted"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">{b.name}</span>
+                {getStatusBadge(b.status)}
+                {(b as BotStrategy & { _live?: boolean })._live && (
+                  <Wifi className="h-3 w-3 text-emerald-500" />
+                )}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {b.exchange} · {b.asset}
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 text-xs">
+                <span className="text-muted-foreground">
+                  {formatKRW(cap)}
+                </span>
+                <span className="text-muted-foreground">→</span>
+                <span className="font-semibold">
+                  {formatKRW(b.currentValue)}
+                </span>
+                <span className={`font-bold ${Number(ret) >= 0 ? "text-positive" : "text-negative"}`}>
+                  {Number(ret) >= 0 ? "+" : ""}{ret}%
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected Bot Stats */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <DollarSign className="h-3.5 w-3.5" />
+            투자금
+            {editingBotId !== bot.id && (
+              <button
+                onClick={() => startEditing(bot.id)}
+                className="ml-auto rounded p-0.5 hover:bg-muted transition-colors"
+                title="투자금 수정"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          {editingBotId === bot.id ? (
+            <div className="mt-1 flex items-center gap-1">
+              <input
+                ref={editRef}
+                type="text"
+                inputMode="numeric"
+                value={editValue}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  setEditValue(raw ? parseInt(raw, 10).toLocaleString() : "");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCapital(bot.id, parseInt(editValue.replace(/,/g, "")) || 0);
+                  if (e.key === "Escape") setEditingBotId(null);
+                }}
+                onBlur={() => saveCapital(bot.id, parseInt(editValue.replace(/,/g, "")) || 0)}
+                className="w-28 rounded border border-primary bg-background px-2 py-0.5 text-lg font-bold font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <span className="text-sm text-muted-foreground">원</span>
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {b.asset} | {b.exchange}
-            </div>
-          </button>
-        ))}
+          ) : (
+            <p
+              className="mt-1 text-lg font-bold cursor-pointer hover:text-primary transition-colors"
+              onClick={() => startEditing(bot.id)}
+              title="클릭하여 수정"
+            >
+              {formatKRW(effectiveCapital)}
+            </p>
+          )}
+        </div>
+        <div className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <BarChart3 className="h-3.5 w-3.5" />
+            현재 평가금
+          </div>
+          <p className="mt-1 text-lg font-bold">{formatKRW(bot.currentValue)}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <TrendingUp className="h-3.5 w-3.5" />
+            수익
+          </div>
+          <p className={`mt-1 text-lg font-bold ${botPnL >= 0 ? "text-positive" : "text-negative"}`}>
+            {botPnL >= 0 ? "+" : ""}{formatKRW(botPnL)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Activity className="h-3.5 w-3.5" />
+            수익률
+          </div>
+          <p className={`mt-1 text-lg font-bold ${Number(botReturnPct) >= 0 ? "text-positive" : "text-negative"}`}>
+            {Number(botReturnPct) >= 0 ? "+" : ""}{botReturnPct}%
+          </p>
+        </div>
+      </div>
+
+      {/* Summary Bars — 실투자 / 모의투자 분리 */}
+      <div className="mb-6 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm">
+          <span className="text-muted-foreground font-medium">실투자 합계</span>
+          <span>투자금 <strong>{formatKRW(realInvested)}</strong></span>
+          <span>평가금 <strong>{formatKRW(realCurrent)}</strong></span>
+          <span className={realPnL >= 0 ? "text-positive" : "text-negative"}>
+            수익 <strong>{realPnL >= 0 ? "+" : ""}{formatKRW(realPnL)}</strong>
+          </span>
+          <span className={Number(realReturnPct) >= 0 ? "text-positive" : "text-negative"}>
+            <strong>{Number(realReturnPct) >= 0 ? "+" : ""}{realReturnPct}%</strong>
+          </span>
+        </div>
+        {simBots.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-dashed border-border bg-muted/10 px-4 py-2 text-sm text-muted-foreground">
+            <span className="font-medium">모의투자</span>
+            <span>투자금 <strong>{formatKRW(simInvested)}</strong></span>
+            <span>평가금 <strong>{formatKRW(simCurrent)}</strong></span>
+            <span className={simPnL >= 0 ? "text-positive" : "text-negative"}>
+              수익 <strong>{simPnL >= 0 ? "+" : ""}{formatKRW(simPnL)}</strong>
+            </span>
+            <span className={Number(simReturnPct) >= 0 ? "text-positive" : "text-negative"}>
+              <strong>{Number(simReturnPct) >= 0 ? "+" : ""}{simReturnPct}%</strong>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Selected Bot Detail */}
@@ -677,17 +819,17 @@ export default function BotPerformancePage() {
                 <span className="font-medium">{bot.startDate}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">초기 자본</span>
+                <span className="text-muted-foreground">투자금</span>
                 <span className="font-medium">
-                  {(bot.initialCapital / 10000).toLocaleString()}만원
+                  {formatKRW(effectiveCapital)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">현재 평가</span>
                 <span
-                  className={`font-bold ${bot.currentValue >= bot.initialCapital ? "text-positive" : "text-negative"}`}
+                  className={`font-bold ${bot.currentValue >= effectiveCapital ? "text-positive" : "text-negative"}`}
                 >
-                  {(bot.currentValue / 10000).toLocaleString()}만원
+                  {formatKRW(bot.currentValue)}
                 </span>
               </div>
             </div>

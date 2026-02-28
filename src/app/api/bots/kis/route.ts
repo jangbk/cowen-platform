@@ -200,7 +200,9 @@ export async function GET() {
     // Pair trades for P&L
     const pairedTrades = pairTradesForPnL(trades);
 
-    const initialCapital = Math.max(totalAsset - totalProfitLoss, 20000000);
+    // 실제 입금액 (수동 설정) - 모의투자 1억원
+    const MANUAL_INITIAL_CAPITAL = 100_000_000; // 1억원
+    const initialCapital = MANUAL_INITIAL_CAPITAL;
     const currentValue = totalAsset || initialCapital;
 
     const equityCurve = buildEquityCurve(pairedTrades, initialCapital);
@@ -222,7 +224,9 @@ export async function GET() {
         : "2025-04-01",
       initialCapital,
       currentValue,
-      totalReturn: calcTotalReturn(pairedTrades, initialCapital),
+      totalReturn: initialCapital > 0
+        ? Math.round(((currentValue - initialCapital) / initialCapital) * 1000) / 10
+        : calcTotalReturn(pairedTrades, initialCapital),
       monthlyReturn:
         monthlyReturns.length > 0
           ? Math.round(

@@ -129,19 +129,23 @@ export async function GET() {
       paid_fee: string;
     }> : [];
 
-    // Parse orders into Trade format
+    // Parse orders into Trade format (봇 배포일 이후만)
+    const BOT_START = "2026-01-20";
     const trades: Trade[] = [];
     for (const order of orders) {
       const isBuy = order.side === "bid";
       const executedVolume = parseFloat(order.executed_volume || "0");
       if (executedVolume <= 0) continue;
 
+      const orderTime = order.created_at?.replace("T", " ").slice(0, 19) || "";
+      if (orderTime < BOT_START) continue; // 봇 이전 수동 거래 제외
+
       const price = parseFloat(order.price || "0");
       const fee = parseFloat(order.paid_fee || "0");
       const amount = price * executedVolume;
 
       trades.push({
-        time: order.created_at?.replace("T", " ").slice(0, 19) || "",
+        time: orderTime,
         type: isBuy ? "buy" : "sell",
         price,
         qty: executedVolume,
@@ -153,11 +157,9 @@ export async function GET() {
     // Pair buy/sell for P&L calculation
     const pairedTrades = pairTradesForPnL(trades);
 
-    // Initial capital estimate
-    const realizedPnL = pairedTrades
-      .filter((t) => t.pnl !== undefined)
-      .reduce((s, t) => s + (t.pnl ?? 0), 0);
-    const initialCapital = Math.max(currentValue - realizedPnL, 5000000);
+    // 실제 입금액 (수동 설정)
+    const MANUAL_INITIAL_CAPITAL = 3_500_000; // 350만원
+    const initialCapital = MANUAL_INITIAL_CAPITAL;
 
     const equityCurve = buildEquityCurve(pairedTrades, initialCapital);
     const winLoss = calcWinRate(pairedTrades);
@@ -175,10 +177,12 @@ export async function GET() {
       status: "active" as const,
       startDate: trades.length
         ? trades[trades.length - 1].time.split(" ")[0]
-        : "2025-06-01",
+        : BOT_START,
       initialCapital,
       currentValue: Math.round(currentValue),
-      totalReturn: calcTotalReturn(pairedTrades, initialCapital),
+      totalReturn: initialCapital > 0
+        ? Math.round(((currentValue - initialCapital) / initialCapital) * 1000) / 10
+        : calcTotalReturn(pairedTrades, initialCapital),
       monthlyReturn:
         monthlyReturns.length > 0
           ? Math.round(

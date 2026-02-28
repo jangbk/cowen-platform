@@ -131,10 +131,9 @@ export async function GET() {
     // Pair buy/sell for P&L
     const pairedTrades = pairTradesForPnL(trades);
 
-    const realizedPnL = pairedTrades
-      .filter((t) => t.pnl !== undefined)
-      .reduce((s, t) => s + (t.pnl ?? 0), 0);
-    const initialCapital = Math.max(currentValue - realizedPnL, 8000000);
+    // 실제 입금액 (수동 설정)
+    const MANUAL_INITIAL_CAPITAL = 2_500_000; // 250만원
+    const initialCapital = MANUAL_INITIAL_CAPITAL;
 
     const equityCurve = buildEquityCurve(pairedTrades, initialCapital);
     const winLoss = calcWinRate(pairedTrades);
@@ -152,10 +151,12 @@ export async function GET() {
       status: "active" as const,
       startDate: trades.length
         ? trades[trades.length - 1].time.split("T")[0]
-        : "2025-09-01",
+        : "2026-01-20",
       initialCapital,
       currentValue: Math.round(currentValue),
-      totalReturn: calcTotalReturn(pairedTrades, initialCapital),
+      totalReturn: initialCapital > 0
+        ? Math.round(((currentValue - initialCapital) / initialCapital) * 1000) / 10
+        : calcTotalReturn(pairedTrades, initialCapital),
       monthlyReturn:
         monthlyReturns.length > 0
           ? Math.round(
