@@ -29,15 +29,18 @@ export async function POST(request: Request) {
     }
   }
 
-  let body: { password?: string };
+  let password: string | undefined;
   try {
-    body = await request.json();
+    const rawText = await request.text();
+    // Vercel/Next.js 16 may backslash-escape special chars in request body
+    const cleaned = rawText.replace(/\\([^"\\\/bfnrtu])/g, "$1");
+    const body = JSON.parse(cleaned);
+    password = body.password;
   } catch {
     return NextResponse.json({ error: "잘못된 요청입니다." }, { status: 400 });
   }
 
-  const { password } = body;
-  const sitePassword = process.env.SITE_PASSWORD;
+  const sitePassword = process.env.SITE_PASSWORD?.trim();
 
   if (!sitePassword || password !== sitePassword) {
     // Track failed attempt
