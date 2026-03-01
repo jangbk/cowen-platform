@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
-import { Search, Bell, User, ChevronDown, Menu, X } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Search, ChevronDown, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/lib/constants";
 import { ThemeToggle } from "./ThemeToggle";
+import { SearchDialog } from "./SearchDialog";
+import { NotificationsDropdown } from "./NotificationsDropdown";
+import { UserDropdown } from "./UserDropdown";
 import type { NavItem } from "@/lib/types";
 
 function Logo() {
@@ -271,6 +274,20 @@ function MobileNav({
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Global Cmd+K / Ctrl+K shortcut
+  const handleGlobalKey = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      setSearchOpen((prev) => !prev);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleGlobalKey);
+    return () => document.removeEventListener("keydown", handleGlobalKey);
+  }, [handleGlobalKey]);
 
   return (
     <>
@@ -292,29 +309,24 @@ export function Header() {
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">
             <button
-              className="rounded-lg p-2 hover:bg-muted transition-colors"
-              aria-label="검색"
+              onClick={() => setSearchOpen(true)}
+              className="relative rounded-lg p-2 hover:bg-muted transition-colors"
+              aria-label="검색 (⌘K)"
             >
               <Search className="h-5 w-5 text-foreground" aria-hidden="true" />
+              <kbd className="absolute -bottom-0.5 -right-1 hidden sm:inline-flex items-center rounded border border-border bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground leading-none">
+                ⌘K
+              </kbd>
             </button>
             <ThemeToggle />
-            <button
-              className="rounded-lg p-2 hover:bg-muted transition-colors hidden sm:inline-flex"
-              aria-label="알림"
-            >
-              <Bell className="h-5 w-5 text-foreground" aria-hidden="true" />
-            </button>
-            <button
-              className="rounded-lg p-2 hover:bg-muted transition-colors hidden sm:inline-flex"
-              aria-label="프로필"
-            >
-              <User className="h-5 w-5 text-foreground" aria-hidden="true" />
-            </button>
+            <NotificationsDropdown />
+            <UserDropdown />
           </div>
         </div>
       </header>
 
       <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 }
