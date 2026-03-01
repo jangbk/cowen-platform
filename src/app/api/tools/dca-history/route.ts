@@ -31,7 +31,7 @@ const COINGECKO_IDS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // File-based cache (.data/dca-cache/)
 // ---------------------------------------------------------------------------
-const CACHE_DIR = join(process.cwd(), ".data", "dca-cache");
+const CACHE_DIR = join("/tmp", "dca-cache");
 const CACHE_MS = 24 * 60 * 60 * 1000; // 24h
 
 function cp(asset: string, from: string, to: string) {

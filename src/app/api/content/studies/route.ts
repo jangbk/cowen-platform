@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { execSync } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -18,7 +17,7 @@ const RSS_FEEDS = [
 // ---------------------------------------------------------------------------
 // File-based persistent cache
 // ---------------------------------------------------------------------------
-const CACHE_DIR = path.join(process.cwd(), ".data");
+const CACHE_DIR = path.join("/tmp", "news-cache");
 const CACHE_FILE = path.join(CACHE_DIR, "news-cache.json");
 
 interface CacheData {
@@ -153,19 +152,26 @@ function parseItems(xml: string, sourceName: string): Article[] {
   return articles;
 }
 
-function fetchFeed(url: string): string {
+async function fetchFeed(url: string): Promise<string> {
   try {
     const parsedUrl = new URL(url);
     if (!["http:", "https:"].includes(parsedUrl.protocol)) return "";
-    const safeUrl = parsedUrl.href;
 
-    return execSync(
-      `curl -sL --max-time 15 --max-filesize 5242880 ` +
-        `-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' ` +
-        `-H 'Accept: application/rss+xml,application/xml,text/xml,*/*;q=0.1' ` +
-        `'${safeUrl}'`,
-      { maxBuffer: 5 * 1024 * 1024, timeout: 20000 }
-    ).toString();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const res = await fetch(parsedUrl.href, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        Accept: "application/rss+xml,application/xml,text/xml,*/*;q=0.1",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return "";
+    return await res.text();
   } catch (e) {
     console.error(`Failed to fetch feed ${url}:`, e instanceof Error ? e.message : e);
     return "";
@@ -233,11 +239,14 @@ ${listText}`,
 async function fetchAndSummarize(): Promise<Article[]> {
   const allArticles: Article[] = [];
 
-  for (const feed of RSS_FEEDS) {
-    const xml = fetchFeed(feed.url);
-    if (!xml) continue;
-    const items = parseItems(xml, feed.name);
-    allArticles.push(...items);
+  const feedResults = await Promise.allSettled(
+    RSS_FEEDS.map(async (feed) => {
+      const xml = await fetchFeed(feed.url);
+      return xml ? parseItems(xml, feed.name) : [];
+    })
+  );
+  for (const result of feedResults) {
+    if (result.status === "fulfilled") allArticles.push(...result.value);
   }
 
   // Deduplicate
