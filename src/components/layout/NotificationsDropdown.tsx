@@ -1,53 +1,42 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Bell, Bot, TrendingUp, Info, Check } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Bell, Bot, TrendingUp, Info, Check, RefreshCw, AlertTriangle } from "lucide-react";
 
 interface Notification {
   id: string;
   icon: "bot" | "price" | "system";
   title: string;
   time: string;
+  rawTime: number; // for sorting
   read: boolean;
 }
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: "1",
-    icon: "bot",
-    title: "BTC 그리드 봇: 매수 체결 $97,450",
-    time: "5분 전",
-    read: false,
-  },
-  {
-    id: "2",
-    icon: "price",
-    title: "ETH 가격 알림: $3,800 돌파",
-    time: "23분 전",
-    read: false,
-  },
-  {
-    id: "3",
-    icon: "system",
-    title: "포트폴리오 리밸런싱 리포트 생성 완료",
-    time: "1시간 전",
-    read: false,
-  },
-  {
-    id: "4",
-    icon: "bot",
-    title: "SOL DCA 봇: 주간 매수 완료 $185.20",
-    time: "3시간 전",
-    read: true,
-  },
-  {
-    id: "5",
-    icon: "system",
-    title: "시스템 점검 완료 — 모든 서비스 정상",
-    time: "1일 전",
-    read: true,
-  },
-];
+interface BotTrade {
+  time: string;
+  type: string;
+  price: string;
+  qty: string;
+  pnl: string;
+}
+
+interface BotStrategy {
+  id: string;
+  name: string;
+  exchange: string;
+  status: string;
+  totalReturn: number;
+  currentValue: number;
+  initialCapital: number;
+  totalTrades: number;
+  recentTrades: BotTrade[];
+  _live?: boolean;
+}
+
+interface SummaryResponse {
+  strategies: BotStrategy[];
+  timestamp: string;
+}
 
 const ICON_MAP = {
   bot: Bot,
@@ -55,15 +44,120 @@ const ICON_MAP = {
   system: Info,
 };
 
+function parseTradeTime(timeStr: string): Date {
+  // Handle both "2026-01-25 14:30" and ISO formats
+  if (timeStr.includes("T")) return new Date(timeStr);
+  return new Date(timeStr.replace(" ", "T") + ":00");
+}
+
+function timeAgo(date: Date): string {
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  if (diffMs < 0) return "방금 전";
+
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "방금 전";
+  if (diffMin < 60) return `${diffMin}분 전`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}시간 전`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 30) return `${diffDay}일 전`;
+  return `${Math.floor(diffDay / 30)}개월 전`;
+}
+
+function buildNotifications(strategies: BotStrategy[]): Notification[] {
+  const notifications: Notification[] = [];
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+  for (const bot of strategies) {
+    // 최근 거래 → 알림 변환 (봇당 최대 3건)
+    for (const trade of bot.recentTrades.slice(0, 3)) {
+      const tradeDate = parseTradeTime(trade.time);
+      const isBuy = trade.type === "Buy";
+      const pnlText = !isBuy && trade.pnl !== "-" ? ` (${trade.pnl})` : "";
+
+      notifications.push({
+        id: `${bot.id}-${trade.time}-${trade.type}`,
+        icon: "bot",
+        title: `${bot.name}: ${isBuy ? "매수" : "매도"} ₩${trade.price}${pnlText}`,
+        time: timeAgo(tradeDate),
+        rawTime: tradeDate.getTime(),
+        read: tradeDate.getTime() < oneDayAgo,
+      });
+    }
+
+    // 봇 성과 요약 (실제 거래가 있고 라이브인 경우만)
+    if (bot._live && bot.totalTrades > 0) {
+      const sign = bot.totalReturn >= 0 ? "+" : "";
+      notifications.push({
+        id: `${bot.id}-summary`,
+        icon: "price",
+        title: `${bot.name}: 총 수익률 ${sign}${bot.totalReturn}% (${bot.totalTrades}건 거래)`,
+        time: "현재",
+        rawTime: Date.now() - 1, // show near top but below recent trades
+        read: true,
+      });
+    }
+
+    // 봇 오프라인 경고 (API 연결 실패)
+    if (bot._live === false) {
+      notifications.push({
+        id: `${bot.id}-offline`,
+        icon: "system",
+        title: `${bot.name}: API 연결 실패 — 데모 데이터 표시 중`,
+        time: "현재",
+        rawTime: Date.now(),
+        read: false,
+      });
+    }
+  }
+
+  // 최신순 정렬
+  notifications.sort((a, b) => b.rawTime - a.rawTime);
+  return notifications;
+}
+
 export function NotificationsDropdown() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await fetch("/api/bots/summary");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: SummaryResponse = await res.json();
+      const items = buildNotifications(data.strategies);
+      setNotifications(items);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "알림을 불러올 수 없습니다");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 초기 로드 + 60초 간격 자동 갱신
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // 읽지 않은 알림 수 (사용자가 "모두 읽음" 누른 것 반영)
+  const unreadCount = notifications.filter(
+    (n) => !n.read && !readIds.has(n.id)
+  ).length;
 
   function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setReadIds(new Set(notifications.map((n) => n.id)));
+  }
+
+  function isUnread(n: Notification) {
+    return !n.read && !readIds.has(n.id);
   }
 
   // Close on Escape
@@ -112,7 +206,16 @@ export function NotificationsDropdown() {
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h3 className="text-sm font-semibold text-foreground">알림</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">알림</h3>
+              <button
+                onClick={fetchNotifications}
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="새로고침"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
+              </button>
+            </div>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
@@ -126,24 +229,41 @@ export function NotificationsDropdown() {
 
           {/* Notification list */}
           <div className="max-h-[320px] overflow-y-auto">
-            {notifications.length === 0 ? (
+            {loading && notifications.length === 0 ? (
+              <div className="flex items-center justify-center py-8 gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">봇 데이터 로딩 중...</span>
+              </div>
+            ) : error && notifications.length === 0 ? (
+              <div className="flex flex-col items-center py-8 gap-2">
+                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                <p className="text-sm text-muted-foreground">{error}</p>
+                <button
+                  onClick={fetchNotifications}
+                  className="text-xs text-primary hover:underline"
+                >
+                  다시 시도
+                </button>
+              </div>
+            ) : notifications.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 새로운 알림이 없습니다
               </p>
             ) : (
               notifications.map((n) => {
                 const Icon = ICON_MAP[n.icon];
+                const unread = isUnread(n);
                 return (
                   <div
                     key={n.id}
                     className={`flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/50 ${
-                      !n.read ? "bg-primary/5" : ""
+                      unread ? "bg-primary/5" : ""
                     }`}
                     role="menuitem"
                   >
                     <div
                       className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        !n.read
+                        unread
                           ? "bg-primary/10 text-primary"
                           : "bg-muted text-muted-foreground"
                       }`}
@@ -153,14 +273,14 @@ export function NotificationsDropdown() {
                     <div className="min-w-0 flex-1">
                       <p
                         className={`text-sm leading-snug ${
-                          !n.read ? "font-medium text-foreground" : "text-muted-foreground"
+                          unread ? "font-medium text-foreground" : "text-muted-foreground"
                         }`}
                       >
                         {n.title}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{n.time}</p>
                     </div>
-                    {!n.read && (
+                    {unread && (
                       <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="읽지 않음" />
                     )}
                   </div>
