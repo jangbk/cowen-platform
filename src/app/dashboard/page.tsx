@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import Image from "next/image";
 import { ExternalLink, RefreshCw, Play, ChevronRight, Lightbulb } from "lucide-react";
 import GaugeChart from "@/components/ui/GaugeChart";
 import SparklineChart from "@/components/ui/SparklineChart";
@@ -220,112 +221,66 @@ export default function DashboardPage() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [latestVideo, setLatestVideo] = useState<LatestVideoData | null>(null);
 
-  // ─── Fetch crypto prices ───────────────────────────────────────
+  // ─── Fetch all independent data on mount ──────────────────────
   useEffect(() => {
-    async function fetchPrices() {
-      try {
-        const res = await fetch("/api/crypto/prices");
-        const json = await res.json();
-        setAssets(json.data || []);
-      } catch {
-        console.error("Failed to fetch prices");
-      } finally {
-        setAssetsLoading(false);
-      }
+    async function fetchAll() {
+      const results = await Promise.allSettled([
+        fetch("/api/crypto/prices").then((r) => r.json()),
+        fetch("/api/crypto/risk").then((r) => r.json()),
+        fetch("/api/macro/recession-risk").then((r) => r.json()),
+        fetch("/api/crypto/fear-greed").then((r) => r.json()),
+        fetch("/api/macro/calendar").then((r) => r.json()),
+        fetch("/api/youtube/latest").then((r) => r.json()),
+      ]);
+      if (results[0].status === "fulfilled") setAssets(results[0].value.data || []);
+      if (results[1].status === "fulfilled") setCryptoRiskData(results[1].value);
+      if (results[2].status === "fulfilled") setRecessionRisk(results[2].value);
+      if (results[3].status === "fulfilled") setFearGreed(results[3].value);
+      if (results[4].status === "fulfilled") setCalendarEvents(results[4].value.events || []);
+      if (results[5].status === "fulfilled") setLatestVideo(results[5].value);
+      setAssetsLoading(false);
     }
-    fetchPrices();
+    fetchAll();
   }, []);
 
-  // ─── Fetch market cap ─────────────────────────────────────────
+  // ─── Fetch market cap (tab-dependent) ─────────────────────────
   useEffect(() => {
     async function fetchMcap() {
       setMcapLoading(true);
       try {
         const res = await fetch(`/api/crypto/market-cap?type=${mcapTab}`);
-        const json = await res.json();
-        setMcapData(json);
-      } catch {
-        console.error("Failed to fetch market cap");
-      } finally {
-        setMcapLoading(false);
-      }
+        setMcapData(await res.json());
+      } catch { /* ignore */ }
+      finally { setMcapLoading(false); }
     }
     fetchMcap();
   }, [mcapTab]);
 
-  // ─── Fetch dominance ──────────────────────────────────────────
+  // ─── Fetch dominance (tab-dependent) ──────────────────────────
   useEffect(() => {
     async function fetchDom() {
       setDomLoading(true);
       try {
         const res = await fetch(`/api/crypto/dominance?type=${domTab}`);
-        const json = await res.json();
-        setDomData(json);
-      } catch {
-        console.error("Failed to fetch dominance");
-      } finally {
-        setDomLoading(false);
-      }
+        setDomData(await res.json());
+      } catch { /* ignore */ }
+      finally { setDomLoading(false); }
     }
     fetchDom();
   }, [domTab]);
 
-  // ─── Fetch macro data ─────────────────────────────────────────
+  // ─── Fetch macro data (tab-dependent) ─────────────────────────
   useEffect(() => {
     async function fetchMacro() {
       setMacroLoading(true);
       try {
         const res = await fetch(`/api/macro/indicators?indicator=${macroTab}`);
-        const json = await res.json();
-        setMacroData(json);
-      } catch {
-        console.error("Failed to fetch macro");
-      } finally {
-        setMacroLoading(false);
-      }
+        setMacroData(await res.json());
+      } catch { /* ignore */ }
+      finally { setMacroLoading(false); }
     }
     fetchMacro();
   }, [macroTab]);
-
-  // ─── Fetch crypto risk (all assets) ────────────────────────────
-  useEffect(() => {
-    fetch("/api/crypto/risk")
-      .then((r) => r.json())
-      .then((json) => setCryptoRiskData(json))
-      .catch(() => console.error("Failed to fetch crypto risk"));
-  }, []);
-
-  // ─── Fetch recession risk ─────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/macro/recession-risk")
-      .then((r) => r.json())
-      .then((json) => setRecessionRisk(json))
-      .catch(() => console.error("Failed to fetch recession risk"));
-  }, []);
-
-  // ─── Fetch Fear & Greed ───────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/crypto/fear-greed")
-      .then((r) => r.json())
-      .then((json) => setFearGreed(json))
-      .catch(() => console.error("Failed to fetch fear & greed"));
-  }, []);
-
-  // ─── Fetch macro calendar ─────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/macro/calendar")
-      .then((r) => r.json())
-      .then((json) => setCalendarEvents(json.events || []))
-      .catch(() => console.error("Failed to fetch calendar"));
-  }, []);
-
-  // ─── Fetch latest video ───────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/youtube/latest")
-      .then((r) => r.json())
-      .then((json) => setLatestVideo(json))
-      .catch(() => console.error("Failed to fetch latest video"));
-  }, []);
 
   // ─── Transform data for charts ────────────────────────────────
   const mcapChartData = useMemo(() => {
@@ -431,13 +386,13 @@ export default function DashboardPage() {
                         <td className="py-3 pr-4">
                           <div className="flex items-center gap-2">
                             {asset.image ? (
-                              <img
+                              <Image
                                 src={asset.image}
                                 alt={asset.symbol}
+                                width={24}
+                                height={24}
                                 className="h-6 w-6 rounded-full"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = "none";
-                                }}
+                                unoptimized
                               />
                             ) : (
                               <div className="h-6 w-6 rounded-full bg-primary/20" />
@@ -512,9 +467,9 @@ export default function DashboardPage() {
                   label="Crypto Risk Summary"
                   size="md"
                   subMetrics={[
-                    { label: "Price", value: cryptoRiskData?.risks?.BTC?.risk ?? 0.4, color: "#f97316" },
-                    { label: "Momentum", value: cryptoRiskData?.risks?.ETH?.risk ?? 0.35, color: "#10b981" },
-                    { label: "Volatility", value: cryptoRiskData?.risks?.SOL?.risk ?? 0.3, color: "#8b5cf6" },
+                    { label: "BTC", value: cryptoRiskData?.risks?.BTC?.risk ?? 0.4, color: "#f97316" },
+                    { label: "ETH", value: cryptoRiskData?.risks?.ETH?.risk ?? 0.35, color: "#10b981" },
+                    { label: "SOL", value: cryptoRiskData?.risks?.SOL?.risk ?? 0.3, color: "#8b5cf6" },
                   ]}
                 />
                 <div className="mt-2 flex items-center justify-between w-full max-w-[14rem] text-[10px] text-muted-foreground">
@@ -751,13 +706,12 @@ export default function DashboardPage() {
             <h3 className="mb-3 font-semibold">Latest Video</h3>
             <Link href={latestVideo?.link || "/content/video-summaries"} className="block group" target={latestVideo?.link ? "_blank" : undefined}>
               <div className="relative aspect-video rounded-lg bg-slate-800 overflow-hidden">
-                <img
+                <Image
                   src={latestVideo?.thumbnail || "https://img.youtube.com/vi/eAzoXY1GfIo/mqdefault.jpg"}
                   alt={latestVideo?.title || "Latest video thumbnail"}
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  fill
+                  className="object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                  unoptimized
                 />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="h-10 w-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center group-hover:bg-primary/80 transition-colors">

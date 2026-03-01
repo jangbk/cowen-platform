@@ -19,7 +19,9 @@ import {
   TrendingDown,
   Minus,
   HelpCircle,
+  Database,
 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 // ─── Types ───────────────────────────────────────────────────────
 interface NewsAnalysis {
@@ -83,6 +85,9 @@ export default function NewsAnalysisPage() {
   const [loadingStep, setLoadingStep] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [notionStatus, setNotionStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const { toast } = useToast();
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -135,7 +140,7 @@ export default function NewsAnalysisPage() {
       const data = await response.json();
 
       if (data.status !== "ok") {
-        alert(`분석 실패: ${data.message}`);
+        toast("error", `분석 실패: ${data.message}`);
         setIsLoading(false);
         setLoadingStep("");
         return;
@@ -175,7 +180,7 @@ export default function NewsAnalysisPage() {
       setTextInput("");
       setUrlInput("");
     } catch {
-      alert("뉴스 분석에 실패했습니다.");
+      toast("error", "뉴스 분석에 실패했습니다.");
     } finally {
       setIsLoading(false);
       setLoadingStep("");
@@ -205,8 +210,7 @@ ${analysis.tags.join(", ")}`;
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("이 분석을 삭제하시겠습니까?")) return;
+  const handleDeleteConfirm = (id: string) => {
     setAnalyses((prev) => {
       const updated = prev.filter((a) => a.id !== id);
       try {
@@ -215,6 +219,38 @@ ${analysis.tags.join(", ")}`;
       return updated;
     });
     if (expandedId === id) setExpandedId(null);
+    setDeletingId(null);
+    toast("success", "분석이 삭제되었습니다.");
+  };
+
+  const handleSaveToNotion = async (analysis: NewsAnalysis) => {
+    setNotionStatus("saving");
+    try {
+      const response = await fetch("/api/notion/save-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: analysis.title,
+          videoUrl: analysis.sourceUrl || "",
+          channel: "뉴스 분석",
+          publishedDate: analysis.date,
+          summary: analysis.summary,
+          investmentGuide: analysis.investmentGuide,
+          keyPoints: analysis.keyPoints,
+          tags: analysis.tags,
+        }),
+      });
+      const data = await response.json();
+      if (data.status === "ok") {
+        setNotionStatus("saved");
+        toast("success", "Notion에 저장되었습니다!");
+      } else {
+        throw new Error(data.message || "저장 실패");
+      }
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "Notion 저장에 실패했습니다.");
+      setNotionStatus("idle");
+    }
   };
 
   if (!hydrated) {
@@ -424,6 +460,14 @@ ${analysis.tags.join(", ")}`;
                   {/* Action buttons */}
                   <div className="flex flex-wrap gap-2">
                     <button
+                      onClick={() => handleSaveToNotion(analysis)}
+                      disabled={notionStatus === "saving"}
+                      className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      <Database className="h-4 w-4" />
+                      {notionStatus === "saving" ? "저장 중..." : "Notion에 저장"}
+                    </button>
+                    <button
                       onClick={() => handleCopyToClipboard(analysis)}
                       className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                     >
@@ -445,13 +489,31 @@ ${analysis.tags.join(", ")}`;
                         원본 기사
                       </a>
                     )}
-                    <button
-                      onClick={() => handleDelete(analysis.id)}
-                      className="flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors ml-auto"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      삭제
-                    </button>
+                    {deletingId === analysis.id ? (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-sm text-muted-foreground">삭제하시겠습니까?</span>
+                        <button
+                          onClick={() => handleDeleteConfirm(analysis.id)}
+                          className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                        >
+                          확인
+                        </button>
+                        <button
+                          onClick={() => setDeletingId(null)}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingId(analysis.id)}
+                        className="flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors ml-auto"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        삭제
+                      </button>
+                    )}
                   </div>
 
                   {/* Summary Section */}

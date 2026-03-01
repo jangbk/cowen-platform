@@ -65,6 +65,68 @@ function timeAgo(date: Date): string {
   return `${Math.floor(diffDay / 30)}개월 전`;
 }
 
+function buildDemoNotifications(): Notification[] {
+  const now = Date.now();
+  return [
+    {
+      id: "demo-1",
+      icon: "bot",
+      title: "Seykota EMA Bot: 매수 체결 ₩97,150,000 × 0.003600",
+      time: "3분 전",
+      rawTime: now - 3 * 60_000,
+      read: false,
+    },
+    {
+      id: "demo-2",
+      icon: "bot",
+      title: "PTJ 200MA Bot: 매도 체결 ₩97,450,000 × 0.002100 (+32,400)",
+      time: "18분 전",
+      rawTime: now - 18 * 60_000,
+      read: false,
+    },
+    {
+      id: "demo-3",
+      icon: "bot",
+      title: "KIS RSI/MACD Bot: 매수 체결 삼성전자 ₩58,200 × 10주",
+      time: "1시간 전",
+      rawTime: now - 60 * 60_000,
+      read: false,
+    },
+    {
+      id: "demo-4",
+      icon: "price",
+      title: "Seykota EMA Bot: 총 수익률 +2.8% (5건 거래)",
+      time: "현재",
+      rawTime: now - 61 * 60_000,
+      read: true,
+    },
+    {
+      id: "demo-5",
+      icon: "bot",
+      title: "PTJ 200MA Bot: 매수 체결 ₩96,800,000 × 0.002100",
+      time: "5시간 전",
+      rawTime: now - 5 * 3600_000,
+      read: true,
+    },
+    {
+      id: "demo-6",
+      icon: "price",
+      title: "KIS RSI/MACD Bot: 총 수익률 +1.2% (12건 거래)",
+      time: "현재",
+      rawTime: now - 5 * 3600_000 - 1,
+      read: true,
+    },
+    {
+      id: "demo-7",
+      icon: "bot",
+      title: "Seykota EMA Bot: 매도 체결 ₩98,200,000 × 0.003200 (+48,700)",
+      time: "1일 전",
+      rawTime: now - 26 * 3600_000,
+      read: true,
+    },
+  ];
+}
+
 function buildNotifications(strategies: BotStrategy[]): Notification[] {
   const notifications: Notification[] = [];
   const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -123,6 +185,7 @@ export function NotificationsDropdown() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [demoMode, setDemoMode] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -216,7 +279,18 @@ export function NotificationsDropdown() {
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
               </button>
             </div>
-            {unreadCount > 0 && (
+            {demoMode ? (
+              <button
+                onClick={() => {
+                  setDemoMode(false);
+                  setNotifications([]);
+                  fetchNotifications();
+                }}
+                className="text-xs text-yellow-600 hover:underline"
+              >
+                데모 종료
+              </button>
+            ) : unreadCount > 0 ? (
               <button
                 onClick={markAllRead}
                 className="flex items-center gap-1 text-xs text-primary hover:underline"
@@ -224,7 +298,7 @@ export function NotificationsDropdown() {
                 <Check className="h-3 w-3" aria-hidden="true" />
                 모두 읽음
               </button>
-            )}
+            ) : null}
           </div>
 
           {/* Notification list */}
@@ -245,10 +319,22 @@ export function NotificationsDropdown() {
                   다시 시도
                 </button>
               </div>
-            ) : notifications.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                새로운 알림이 없습니다
-              </p>
+            ) : notifications.length === 0 && !demoMode ? (
+              <div className="flex flex-col items-center py-8 gap-2">
+                <p className="text-sm text-muted-foreground">
+                  새로운 알림이 없습니다
+                </p>
+                <button
+                  onClick={() => {
+                    setDemoMode(true);
+                    setNotifications(buildDemoNotifications());
+                    setReadIds(new Set());
+                  }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  데모 데이터 보기
+                </button>
+              </div>
             ) : (
               notifications.map((n) => {
                 const Icon = ICON_MAP[n.icon];

@@ -66,15 +66,11 @@ async function bithumbGet(
   return res.json();
 }
 
-export async function GET() {
+export async function getBithumbBotData() {
   if (!API_KEY || !SECRET_KEY) {
-    return NextResponse.json(
-      { error: "BITHUMB_API_KEY or BITHUMB_SECRET_KEY not configured" },
-      { status: 503 }
-    );
+    throw new Error("BITHUMB_API_KEY or BITHUMB_SECRET_KEY not configured");
   }
-
-  try {
+  {
     // 1. 잔고 조회 (v1/accounts) + BTC 시세 (public)
     const [accountsRes, tickerRes] = await Promise.all([
       bithumbGet("/v1/accounts"),
@@ -168,6 +164,8 @@ export async function GET() {
     const monthlyReturns = calcMonthlyReturns(pairedTrades, initialCapital);
     const dailyReturns = dailyPnL.filter((d) => d !== 0);
 
+    const hasTraded = pairedTrades.some((t) => t.type === "sell" && t.pnl !== undefined);
+
     const botStrategy = {
       id: "seykota-ema",
       name: "Seykota EMA Bot",
@@ -180,25 +178,24 @@ export async function GET() {
         : BOT_START,
       initialCapital,
       currentValue: Math.round(currentValue),
-      totalReturn: initialCapital > 0
+      totalReturn: hasTraded && initialCapital > 0
         ? Math.round(((currentValue - initialCapital) / initialCapital) * 1000) / 10
-        : calcTotalReturn(pairedTrades, initialCapital),
-      monthlyReturn:
-        monthlyReturns.length > 0
-          ? Math.round(
-              (monthlyReturns.reduce((s, r) => s + r, 0) /
-                monthlyReturns.filter((r) => r !== 0).length || 1) * 10
-            ) / 10
-          : 0,
-      maxDrawdown: calcMaxDrawdown(equityCurve),
-      sharpeRatio: calcSharpeRatio(dailyReturns),
+        : 0,
+      monthlyReturn: hasTraded && monthlyReturns.filter((r) => r !== 0).length > 0
+        ? Math.round(
+            (monthlyReturns.reduce((s, r) => s + r, 0) /
+              monthlyReturns.filter((r) => r !== 0).length) * 10
+          ) / 10
+        : 0,
+      maxDrawdown: hasTraded ? calcMaxDrawdown(equityCurve) : 0,
+      sharpeRatio: hasTraded ? calcSharpeRatio(dailyReturns) : 0,
       winRate: winLoss.winRate,
       totalTrades: winLoss.totalTrades,
       profitTrades: winLoss.profitTrades,
       lossTrades: winLoss.lossTrades,
       avgWin: avgWL.avgWin,
       avgLoss: avgWL.avgLoss,
-      profitFactor: calcProfitFactor(pairedTrades),
+      profitFactor: hasTraded ? calcProfitFactor(pairedTrades) : 0,
       dailyPnL,
       monthlyReturns,
       recentTrades: pairedTrades.slice(0, 10).map((t) => ({
@@ -220,12 +217,20 @@ export async function GET() {
       },
     };
 
-    return NextResponse.json(botStrategy);
+    return botStrategy;
+  }
+}
+
+export async function GET() {
+  try {
+    const data = await getBithumbBotData();
+    return NextResponse.json(data);
   } catch (err) {
     console.error("Bithumb API error:", err);
+    const status = (err instanceof Error && err.message.includes("not configured")) ? 503 : 500;
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
+      { status }
     );
   }
 }

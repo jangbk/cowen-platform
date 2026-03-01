@@ -9,7 +9,8 @@ import { NextResponse } from "next/server";
 
 interface CalendarEvent {
   name: string;
-  date: string;
+  date: string; // ISO date YYYY-MM-DD
+  time: string; // HH:MM
   prev: string;
   forecast: string;
   importance: "high" | "medium" | "low";
@@ -31,10 +32,9 @@ async function fetchForexFactory(): Promise<CalendarEvent[] | null> {
     const events = (json ?? [])
       .filter(
         (e: { country: string; impact: string }) =>
-          e.country === "USD" &&
           (e.impact === "High" || e.impact === "Medium"),
       )
-      .slice(0, 10)
+      .slice(0, 20)
       .map(
         (e: {
           title: string;
@@ -42,23 +42,29 @@ async function fetchForexFactory(): Promise<CalendarEvent[] | null> {
           previous: string;
           forecast: string;
           impact: string;
+          country: string;
         }) => {
-          // Parse date to Korean-friendly format
           const d = new Date(e.date);
-          const days = ["일", "월", "화", "수", "목", "금", "토"];
-          const dayStr = days[d.getDay()];
+          const isoDate = d.toISOString().split("T")[0];
           const timeStr = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+
+          // Map ForexFactory country codes (USD, EUR, GBP, etc.) to 2-letter codes
+          const countryMap: Record<string, string> = {
+            USD: "US", EUR: "EU", GBP: "UK", JPY: "JP", CNY: "CN",
+            AUD: "AU", CAD: "CA", CHF: "CH", NZD: "NZ", KRW: "KR",
+          };
 
           return {
             name: e.title,
-            date: `${dayStr} ${timeStr}`,
+            date: isoDate,
+            time: timeStr,
             prev: e.previous || "-",
             forecast: e.forecast || "-",
             importance:
               e.impact === "High"
                 ? ("high" as const)
                 : ("medium" as const),
-            country: "US",
+            country: countryMap[e.country] || e.country,
           };
         },
       );
@@ -69,70 +75,27 @@ async function fetchForexFactory(): Promise<CalendarEvent[] | null> {
   }
 }
 
-// Fallback: generate plausible near-term calendar
+// Fallback: generate plausible near-term calendar with ISO dates
 function getStaticCalendar(): CalendarEvent[] {
+  // Generate dates relative to current week
   const now = new Date();
-  const thisWeek: CalendarEvent[] = [
-    {
-      name: "비농업 고용 변동 (NFP)",
-      date: "금 22:30",
-      prev: "256K",
-      forecast: "170K",
-      importance: "high",
-      country: "US",
-    },
-    {
-      name: "실업률",
-      date: "금 22:30",
-      prev: "4.1%",
-      forecast: "4.1%",
-      importance: "high",
-      country: "US",
-    },
-    {
-      name: "CPI (전년비)",
-      date: "수 22:30",
-      prev: "2.9%",
-      forecast: "2.8%",
-      importance: "high",
-      country: "US",
-    },
-    {
-      name: "미시간 소비자 심리지수",
-      date: "금 00:00",
-      prev: "64.7",
-      forecast: "68.0",
-      importance: "medium",
-      country: "US",
-    },
-    {
-      name: "소매 판매 (MoM)",
-      date: "금 22:30",
-      prev: "0.4%",
-      forecast: "0.3%",
-      importance: "medium",
-      country: "US",
-    },
-    {
-      name: "FOMC 의사록",
-      date: "목 04:00",
-      prev: "-",
-      forecast: "-",
-      importance: "high",
-      country: "US",
-    },
-    {
-      name: "ISM 제조업 PMI",
-      date: "월 00:00",
-      prev: "49.3",
-      forecast: "49.5",
-      importance: "high",
-      country: "US",
-    },
-  ];
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const dayISO = (offset: number) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + offset);
+    return d.toISOString().split("T")[0];
+  };
 
-  // Return first 5
-  return thisWeek.slice(0, 5);
+  return [
+    { name: "ISM 제조업 PMI", date: dayISO(0), time: "00:00", prev: "49.3", forecast: "49.5", importance: "high", country: "US" },
+    { name: "CPI (전년비)", date: dayISO(2), time: "22:30", prev: "2.9%", forecast: "2.8%", importance: "high", country: "US" },
+    { name: "FOMC 의사록", date: dayISO(3), time: "04:00", prev: "-", forecast: "-", importance: "high", country: "US" },
+    { name: "비농업 고용 변동 (NFP)", date: dayISO(4), time: "22:30", prev: "256K", forecast: "170K", importance: "high", country: "US" },
+    { name: "실업률", date: dayISO(4), time: "22:30", prev: "4.1%", forecast: "4.1%", importance: "high", country: "US" },
+    { name: "소매 판매 (MoM)", date: dayISO(4), time: "22:30", prev: "0.4%", forecast: "0.3%", importance: "medium", country: "US" },
+    { name: "미시간 소비자 심리지수", date: dayISO(4), time: "00:00", prev: "64.7", forecast: "68.0", importance: "medium", country: "US" },
+  ];
 }
 
 export async function GET() {

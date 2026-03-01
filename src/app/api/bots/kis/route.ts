@@ -90,15 +90,11 @@ async function kisGet(
   return data;
 }
 
-export async function GET() {
+export async function getKisBotData() {
   if (!APP_KEY || !APP_SECRET || !CANO) {
-    return NextResponse.json(
-      { error: "KIS_APP_KEY, KIS_APP_SECRET, or KIS_CANO not configured" },
-      { status: 503 }
-    );
+    throw new Error("KIS_APP_KEY, KIS_APP_SECRET, or KIS_CANO not configured");
   }
-
-  try {
+  {
     const token = await getAccessToken();
 
     // 1. Get balance (holdings)
@@ -212,6 +208,8 @@ export async function GET() {
     const monthlyReturns = calcMonthlyReturns(pairedTrades, initialCapital);
     const dailyReturns = dailyPnL.filter((d) => d !== 0);
 
+    const hasTraded = pairedTrades.some((t) => t.type === "sell" && t.pnl !== undefined);
+
     const botStrategy = {
       id: "kis-rsi-macd",
       name: "KIS RSI/MACD Bot",
@@ -224,25 +222,24 @@ export async function GET() {
         : "2025-04-01",
       initialCapital,
       currentValue,
-      totalReturn: initialCapital > 0
+      totalReturn: hasTraded && initialCapital > 0
         ? Math.round(((currentValue - initialCapital) / initialCapital) * 1000) / 10
-        : calcTotalReturn(pairedTrades, initialCapital),
-      monthlyReturn:
-        monthlyReturns.length > 0
-          ? Math.round(
-              (monthlyReturns.reduce((s, r) => s + r, 0) /
-                (monthlyReturns.filter((r) => r !== 0).length || 1)) * 10
-            ) / 10
-          : 0,
-      maxDrawdown: calcMaxDrawdown(equityCurve),
-      sharpeRatio: calcSharpeRatio(dailyReturns),
+        : 0,
+      monthlyReturn: hasTraded && monthlyReturns.filter((r) => r !== 0).length > 0
+        ? Math.round(
+            (monthlyReturns.reduce((s, r) => s + r, 0) /
+              monthlyReturns.filter((r) => r !== 0).length) * 10
+          ) / 10
+        : 0,
+      maxDrawdown: hasTraded ? calcMaxDrawdown(equityCurve) : 0,
+      sharpeRatio: hasTraded ? calcSharpeRatio(dailyReturns) : 0,
       winRate: winLoss.winRate,
       totalTrades: winLoss.totalTrades,
       profitTrades: winLoss.profitTrades,
       lossTrades: winLoss.lossTrades,
       avgWin: avgWL.avgWin,
       avgLoss: avgWL.avgLoss,
-      profitFactor: calcProfitFactor(pairedTrades),
+      profitFactor: hasTraded ? calcProfitFactor(pairedTrades) : 0,
       dailyPnL,
       monthlyReturns,
       recentTrades: pairedTrades.slice(0, 10).map((t) => ({
@@ -265,12 +262,20 @@ export async function GET() {
       },
     };
 
-    return NextResponse.json(botStrategy);
+    return botStrategy;
+  }
+}
+
+export async function GET() {
+  try {
+    const data = await getKisBotData();
+    return NextResponse.json(data);
   } catch (err) {
     console.error("KIS API error:", err);
+    const status = (err instanceof Error && err.message.includes("not configured")) ? 503 : 500;
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
+      { status }
     );
   }
 }

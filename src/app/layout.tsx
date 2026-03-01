@@ -35,6 +35,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: {
     default: "BK INVESTMENT - Investment Analysis Platform",
     template: "%s | BK INVESTMENT",
@@ -59,6 +60,11 @@ export const metadata: Metadata = {
     title: "BK INVESTMENT - Investment Analysis Platform",
     description:
       "크립토, 매크로, 전통 금융을 아우르는 종합 투자 분석 플랫폼",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BK INVESTMENT",
+    description: "크립토, 매크로, 전통 금융을 아우르는 종합 투자 분석 플랫폼",
   },
 };
 

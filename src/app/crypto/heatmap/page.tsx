@@ -77,6 +77,7 @@ function formatMarketCap(value: number): string {
 export default function CryptoHeatmapPage() {
   const [coins, setCoins] = useState<CoinData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [timeframe, setTimeframe] = useState<Timeframe>("24h");
   const [sectorFilter, setSectorFilter] = useState("All");
   const [hoveredCoin, setHoveredCoin] = useState<CoinData | null>(null);
@@ -87,19 +88,23 @@ export default function CryptoHeatmapPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/crypto/heatmap");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (json.data) {
         setCoins(json.data);
         setLastUpdated(new Date());
       }
-    } catch {
-      // keep existing data
+    } catch (e) {
+      if (coins.length === 0) {
+        setError(e instanceof Error ? e.message : "데이터를 불러올 수 없습니다.");
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [coins.length]);
 
   useEffect(() => {
     fetchData();
@@ -282,7 +287,18 @@ export default function CryptoHeatmapPage() {
         className="relative rounded-lg border border-border bg-card overflow-hidden"
         style={{ minHeight: 400 }}
       >
-        {loading && coins.length === 0 ? (
+        {error && coins.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3" style={{ height: dimensions.height }}>
+            <p className="text-muted-foreground">{error}</p>
+            <button
+              onClick={fetchData}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              다시 시도
+            </button>
+          </div>
+        ) : loading && coins.length === 0 ? (
           <div className="flex items-center justify-center" style={{ height: dimensions.height }}>
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>

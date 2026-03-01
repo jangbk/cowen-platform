@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import EquityCurveChart from "@/components/charts/EquityCurveChart";
 import {
   Bot,
   TrendingUp,
@@ -54,38 +55,27 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
   {
     id: "seykota-ema",
     name: "Seykota EMA Bot",
-    description: "EMA 15/150 추세추종 전략",
+    description: "EMA 100 + ATR 동적밴드 추세추종 전략",
     asset: "BTC/KRW",
     exchange: "Bithumb",
     status: "active",
     startDate: "2026-01-20",
     initialCapital: 3500000,
-    currentValue: 3530000,
-    totalReturn: 38.4,
-    monthlyReturn: 3.5,
-    maxDrawdown: -15.7,
-    sharpeRatio: 1.52,
-    winRate: 45.8,
-    totalTrades: 120,
-    profitTrades: 55,
-    lossTrades: 65,
-    avgWin: 8.5,
-    avgLoss: -3.2,
-    profitFactor: 1.95,
-    dailyPnL: [
-      -0.3, 1.5, 2.8, -1.0, 0.2, 3.5, -2.1, 1.8, -0.5, 4.2, 1.0, -1.8,
-      0.7, 2.3, -0.8, 1.2, 3.0, -1.5, 2.1, -0.4, 1.6, 0.9, -2.5, 3.8, 1.3,
-      -0.7, 2.5, -1.2, 0.5, 1.8,
-    ],
-    monthlyReturns: [
-      4.1, -3.2, 7.5, 2.8, -1.2, 5.5, 8.2, 3.1, -2.5, 6.3, 4.8, 2.9,
-    ],
-    recentTrades: [
-      { time: "2026-02-06 22:15", type: "Sell", price: "97,250,000", qty: "0.015000", pnl: "+125,000" },
-      { time: "2026-02-06 18:30", type: "Buy", price: "96,800,000", qty: "0.015000", pnl: "-" },
-      { time: "2026-02-06 14:45", type: "Sell", price: "97,100,000", qty: "0.012000", pnl: "+89,000" },
-      { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012000", pnl: "-" },
-    ],
+    currentValue: 3500000,
+    totalReturn: 0,
+    monthlyReturn: 0,
+    maxDrawdown: 0,
+    sharpeRatio: 0,
+    winRate: 0,
+    totalTrades: 0,
+    profitTrades: 0,
+    lossTrades: 0,
+    avgWin: 0,
+    avgLoss: 0,
+    profitFactor: 0,
+    dailyPnL: [],
+    monthlyReturns: [],
+    recentTrades: [],
   },
   {
     id: "ptj-200ma",
@@ -96,32 +86,21 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
     status: "active",
     startDate: "2026-01-20",
     initialCapital: 2500000,
-    currentValue: 9680000,
-    totalReturn: 21.0,
-    monthlyReturn: 2.8,
-    maxDrawdown: -8.5,
-    sharpeRatio: 1.68,
-    winRate: 58.3,
-    totalTrades: 180,
-    profitTrades: 105,
-    lossTrades: 75,
-    avgWin: 2.8,
-    avgLoss: -1.5,
-    profitFactor: 1.75,
-    dailyPnL: [
-      1.2, 0.8, -0.5, 1.5, -0.3, 2.0, 1.1, -1.0, 0.6, 1.8, -0.7, 1.3, 0.4,
-      -0.2, 2.2, 1.0, -0.8, 1.6, 0.9, -0.4, 1.4, 2.1, -0.6, 0.7, 1.5, -0.3,
-      1.1, 0.5, 1.9, -0.5,
-    ],
-    monthlyReturns: [
-      3.2, 2.1, -0.8, 4.5, 1.8, 2.5, -1.2, 3.8, 2.9, 1.5, -0.5, 1.2,
-    ],
-    recentTrades: [
-      { time: "2026-02-06 20:30", type: "Sell", price: "97,500,000", qty: "0.010000", pnl: "+95,000" },
-      { time: "2026-02-06 15:10", type: "Buy", price: "96,900,000", qty: "0.010000", pnl: "-" },
-      { time: "2026-02-05 23:45", type: "Sell", price: "98,200,000", qty: "0.008000", pnl: "-32,000" },
-      { time: "2026-02-05 19:20", type: "Buy", price: "98,600,000", qty: "0.008000", pnl: "-" },
-    ],
+    currentValue: 2500000,
+    totalReturn: 0,
+    monthlyReturn: 0,
+    maxDrawdown: 0,
+    sharpeRatio: 0,
+    winRate: 0,
+    totalTrades: 0,
+    profitTrades: 0,
+    lossTrades: 0,
+    avgWin: 0,
+    avgLoss: 0,
+    profitFactor: 0,
+    dailyPnL: [],
+    monthlyReturns: [],
+    recentTrades: [],
   },
   {
     id: "kis-rsi-macd",
@@ -132,32 +111,21 @@ const FALLBACK_STRATEGIES: BotStrategy[] = [
     status: "active",
     startDate: "2025-04-01",
     initialCapital: 100000000,
-    currentValue: 22100000,
-    totalReturn: 10.5,
-    monthlyReturn: 1.2,
-    maxDrawdown: -6.2,
-    sharpeRatio: 1.35,
-    winRate: 55.0,
-    totalTrades: 310,
-    profitTrades: 171,
-    lossTrades: 139,
-    avgWin: 1.8,
-    avgLoss: -1.2,
-    profitFactor: 1.45,
-    dailyPnL: [
-      0.5, -0.3, 0.8, 0.2, -0.6, 1.0, 0.4, -0.2, 0.7, -0.5, 0.3, 0.9,
-      -0.4, 0.6, 0.1, -0.3, 0.8, 0.5, -0.1, 0.4, -0.7, 0.6, 0.3, -0.2, 0.5,
-      0.8, -0.4, 0.3, 0.6, -0.1,
-    ],
-    monthlyReturns: [
-      1.5, 0.8, -0.5, 2.1, 1.2, 0.9, -0.3, 1.8, 1.5, 0.6, -0.2, 1.1,
-    ],
-    recentTrades: [
-      { time: "2026-02-06 14:50", type: "Sell", price: "58,200", qty: "10", pnl: "+15,000" },
-      { time: "2026-02-06 10:05", type: "Buy", price: "56,700", qty: "10", pnl: "-" },
-      { time: "2026-02-05 15:20", type: "Sell", price: "198,500", qty: "3", pnl: "+4,500" },
-      { time: "2026-02-05 09:30", type: "Buy", price: "197,000", qty: "3", pnl: "-" },
-    ],
+    currentValue: 100000000,
+    totalReturn: 0,
+    monthlyReturn: 0,
+    maxDrawdown: 0,
+    sharpeRatio: 0,
+    winRate: 0,
+    totalTrades: 0,
+    profitTrades: 0,
+    lossTrades: 0,
+    avgWin: 0,
+    avgLoss: 0,
+    profitFactor: 0,
+    dailyPnL: [],
+    monthlyReturns: [],
+    recentTrades: [],
   },
 ];
 
@@ -291,22 +259,23 @@ export default function BotPerformancePage() {
   const bot = strategies.find((b) => b.id === selectedBot) ?? strategies[0];
 
   // Calculate aggregated stats — 실투자 vs 모의투자 분리
+  // totalTrades === 0인 봇은 수익 계산에서 제외 (거래 없으면 수익 0)
   const realBots = strategies.filter((b) => b.id !== "kis-rsi-macd");
   const simBots = strategies.filter((b) => b.id === "kis-rsi-macd");
 
   const realInvested = realBots.reduce((sum, b) => sum + getCapital(b), 0);
-  const realCurrent = realBots.reduce((sum, b) => sum + b.currentValue, 0);
-  const realPnL = realCurrent - realInvested;
+  const realTradedPnL = realBots.reduce((sum, b) => b.totalTrades > 0 ? sum + (b.currentValue - getCapital(b)) : sum, 0);
   const realReturnPct = realInvested > 0
-    ? ((realPnL / realInvested) * 100).toFixed(1)
+    ? ((realTradedPnL / realInvested) * 100).toFixed(1)
     : "0.0";
+  const realCurrent = realBots.reduce((sum, b) => sum + b.currentValue, 0);
 
   const simInvested = simBots.reduce((sum, b) => sum + getCapital(b), 0);
-  const simCurrent = simBots.reduce((sum, b) => sum + b.currentValue, 0);
-  const simPnL = simCurrent - simInvested;
+  const simTradedPnL = simBots.reduce((sum, b) => b.totalTrades > 0 ? sum + (b.currentValue - getCapital(b)) : sum, 0);
   const simReturnPct = simInvested > 0
-    ? ((simPnL / simInvested) * 100).toFixed(1)
+    ? ((simTradedPnL / simInvested) * 100).toFixed(1)
     : "0.0";
+  const simCurrent = simBots.reduce((sum, b) => sum + b.currentValue, 0);
 
   // Simple equity curve from daily PnL
   const equityCurve = bot.dailyPnL.reduce(
@@ -317,20 +286,12 @@ export default function BotPerformancePage() {
     [bot.initialCapital]
   );
 
-  const maxEquity = Math.max(...equityCurve);
-  const minEquity = Math.min(...equityCurve);
 
-  // Recent trades: use API data if available, fallback to demo
-  const recentTrades = bot.recentTrades ?? [
-    { time: "2026-02-06 22:15", type: "Sell", price: "97,250,000", qty: "0.015", pnl: "+125,000" },
-    { time: "2026-02-06 18:30", type: "Buy", price: "96,800,000", qty: "0.015", pnl: "-" },
-    { time: "2026-02-06 14:45", type: "Sell", price: "97,100,000", qty: "0.012", pnl: "+89,000" },
-    { time: "2026-02-06 10:20", type: "Buy", price: "96,350,000", qty: "0.012", pnl: "-" },
-  ];
+  const recentTrades = bot.recentTrades ?? [];
 
   const effectiveCapital = getCapital(bot);
-  const botPnL = bot.currentValue - effectiveCapital;
-  const botReturnPct = effectiveCapital > 0
+  const botPnL = bot.totalTrades > 0 ? bot.currentValue - effectiveCapital : 0;
+  const botReturnPct = bot.totalTrades > 0 && effectiveCapital > 0
     ? ((botPnL / effectiveCapital) * 100).toFixed(1)
     : "0.0";
 
@@ -373,8 +334,8 @@ export default function BotPerformancePage() {
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
         {strategies.map((b) => {
           const cap = getCapital(b);
-          const pnl = b.currentValue - cap;
-          const ret = cap > 0 ? ((pnl / cap) * 100).toFixed(1) : "0.0";
+          const pnl = b.totalTrades > 0 ? b.currentValue - cap : 0;
+          const ret = b.totalTrades > 0 && cap > 0 ? ((pnl / cap) * 100).toFixed(1) : "0.0";
           return (
             <button
               key={b.id}
@@ -491,8 +452,8 @@ export default function BotPerformancePage() {
           <span className="text-muted-foreground font-medium">실투자 합계</span>
           <span>투자금 <strong>{formatKRW(realInvested)}</strong></span>
           <span>평가금 <strong>{formatKRW(realCurrent)}</strong></span>
-          <span className={realPnL >= 0 ? "text-positive" : "text-negative"}>
-            수익 <strong>{realPnL >= 0 ? "+" : ""}{formatKRW(realPnL)}</strong>
+          <span className={realTradedPnL >= 0 ? "text-positive" : "text-negative"}>
+            수익 <strong>{realTradedPnL >= 0 ? "+" : ""}{formatKRW(realTradedPnL)}</strong>
           </span>
           <span className={Number(realReturnPct) >= 0 ? "text-positive" : "text-negative"}>
             <strong>{Number(realReturnPct) >= 0 ? "+" : ""}{realReturnPct}%</strong>
@@ -503,8 +464,8 @@ export default function BotPerformancePage() {
             <span className="font-medium">모의투자</span>
             <span>투자금 <strong>{formatKRW(simInvested)}</strong></span>
             <span>평가금 <strong>{formatKRW(simCurrent)}</strong></span>
-            <span className={simPnL >= 0 ? "text-positive" : "text-negative"}>
-              수익 <strong>{simPnL >= 0 ? "+" : ""}{formatKRW(simPnL)}</strong>
+            <span className={simTradedPnL >= 0 ? "text-positive" : "text-negative"}>
+              수익 <strong>{simTradedPnL >= 0 ? "+" : ""}{formatKRW(simTradedPnL)}</strong>
             </span>
             <span className={Number(simReturnPct) >= 0 ? "text-positive" : "text-negative"}>
               <strong>{Number(simReturnPct) >= 0 ? "+" : ""}{simReturnPct}%</strong>
@@ -525,79 +486,11 @@ export default function BotPerformancePage() {
                 {bot.startDate} ~ 현재
               </span>
             </div>
-            <div className="h-56 relative">
-              <svg
-                viewBox={`0 0 ${equityCurve.length * 20} 200`}
-                className="w-full h-full"
-                preserveAspectRatio="none"
-              >
-                {/* Grid lines */}
-                {[0, 50, 100, 150, 200].map((y) => (
-                  <line
-                    key={y}
-                    x1="0"
-                    y1={y}
-                    x2={equityCurve.length * 20}
-                    y2={y}
-                    stroke="currentColor"
-                    strokeOpacity="0.1"
-                  />
-                ))}
-                {/* Equity line */}
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  points={equityCurve
-                    .map((val, i) => {
-                      const x = i * 20;
-                      const y =
-                        200 -
-                        ((val - minEquity) / (maxEquity - minEquity)) * 180 -
-                        10;
-                      return `${x},${y}`;
-                    })
-                    .join(" ")}
-                />
-                {/* Area fill */}
-                <polygon
-                  fill="#3b82f6"
-                  fillOpacity="0.1"
-                  points={`0,200 ${equityCurve
-                    .map((val, i) => {
-                      const x = i * 20;
-                      const y =
-                        200 -
-                        ((val - minEquity) / (maxEquity - minEquity)) * 180 -
-                        10;
-                      return `${x},${y}`;
-                    })
-                    .join(" ")} ${(equityCurve.length - 1) * 20},200`}
-                />
-                {/* Initial capital line */}
-                <line
-                  x1="0"
-                  y1={
-                    200 -
-                    ((bot.initialCapital - minEquity) /
-                      (maxEquity - minEquity)) *
-                      180 -
-                    10
-                  }
-                  x2={equityCurve.length * 20}
-                  y2={
-                    200 -
-                    ((bot.initialCapital - minEquity) /
-                      (maxEquity - minEquity)) *
-                      180 -
-                    10
-                  }
-                  stroke="#94a3b8"
-                  strokeWidth="1"
-                  strokeDasharray="4 4"
-                />
-              </svg>
-            </div>
+            <EquityCurveChart
+              curves={[{ data: equityCurve, color: "#3b82f6" }]}
+              baseline={bot.initialCapital}
+              spacing={20}
+            />
           </section>
 
           {/* Daily PnL Bar Chart */}

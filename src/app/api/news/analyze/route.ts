@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { execSync } from "child_process";
 
 const SYSTEM_PROMPT = `당신은 경제뉴스 및 투자 기사 분석 전문가입니다. 경제뉴스, 신문기사, X(트위터) 게시물 등을 받아 투자 관점에서 분석하고 구조화된 가이드를 생성합니다.
 
@@ -37,11 +36,9 @@ export async function POST(request: Request) {
     let articleText = content || "";
     let articleTitle = title || "";
 
-    // If URL is provided, fetch and extract text via curl
-    // (Node.js fetch fails on sites like Yahoo Finance due to HeadersOverflowError)
+    // If URL is provided, fetch and extract text via async fetch
     if (url && !content) {
       try {
-        // Validate URL format to prevent command injection
         const parsedUrl = new URL(url);
         if (!["http:", "https:"].includes(parsedUrl.protocol)) {
           return NextResponse.json(
@@ -49,16 +46,28 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
-        const safeUrl = parsedUrl.href;
 
-        const html = execSync(
-          `curl -sL --max-time 20 --max-filesize 10485760 ` +
-            `-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' ` +
-            `-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' ` +
-            `-H 'Accept-Language: ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7' ` +
-            `'${safeUrl}'`,
-          { maxBuffer: 10 * 1024 * 1024, timeout: 25000 }
-        ).toString();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+
+        const fetchRes = await fetch(parsedUrl.href, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+          },
+        });
+        clearTimeout(timeout);
+
+        if (!fetchRes.ok) {
+          return NextResponse.json(
+            { status: "error", message: `URL 요청 실패 (HTTP ${fetchRes.status}). "텍스트 붙여넣기" 탭으로 기사 본문을 직접 복사해서 붙여넣어 주세요.` },
+            { status: 400 }
+          );
+        }
+
+        const html = await fetchRes.text();
 
         if (!html || html.length < 100) {
           return NextResponse.json(
@@ -81,7 +90,7 @@ export async function POST(request: Request) {
       } catch (fetchError) {
         const msg =
           fetchError instanceof Error
-            ? fetchError.message
+            ? (fetchError.name === "AbortError" ? "요청 시간 초과 (20초)" : fetchError.message)
             : "URL을 가져올 수 없습니다.";
         return NextResponse.json(
           {

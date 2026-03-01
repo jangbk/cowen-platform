@@ -20,6 +20,7 @@ import {
   Database,
   Trash2,
 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 // ─── Types ───────────────────────────────────────────────────────
 interface VideoSummary {
@@ -137,6 +138,8 @@ export default function VideoSummariesPage() {
   >("idle");
   const [notionMessage, setNotionMessage] = useState("");
   const [loadingStep, setLoadingStep] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -170,7 +173,7 @@ export default function VideoSummariesPage() {
       const data = await response.json();
 
       if (data.status !== "ok") {
-        alert(`영상 정보를 가져올 수 없습니다: ${data.message}`);
+        toast("error", `영상 정보를 가져올 수 없습니다: ${data.message}`);
         setIsLoading(false);
         setLoadingStep("");
         return;
@@ -256,7 +259,7 @@ export default function VideoSummariesPage() {
         setExpandedId(newId);
       }
     } catch {
-      alert("영상 정보를 가져오는데 실패했습니다.");
+      toast("error", "영상 정보를 가져오는데 실패했습니다.");
     } finally {
       setIsLoading(false);
       setLoadingStep("");
@@ -328,10 +331,11 @@ ${summary.tags.join(", ")}`;
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("이 요약을 삭제하시겠습니까?")) return;
+  const handleDeleteConfirm = (id: string) => {
     saveSummaries(summaries.filter((s) => s.id !== id));
     if (expandedId === id) setExpandedId(null);
+    setDeletingId(null);
+    toast("success", "요약이 삭제되었습니다.");
   };
 
   return (
@@ -526,13 +530,31 @@ ${summary.tags.join(", ")}`;
                       Notion에서 보기
                     </a>
                   )}
-                  <button
-                    onClick={() => handleDelete(summary.id)}
-                    className="flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors ml-auto"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    삭제
-                  </button>
+                  {deletingId === summary.id ? (
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-sm text-muted-foreground">삭제하시겠습니까?</span>
+                      <button
+                        onClick={() => handleDeleteConfirm(summary.id)}
+                        className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                      >
+                        확인
+                      </button>
+                      <button
+                        onClick={() => setDeletingId(null)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeletingId(summary.id)}
+                      className="flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors ml-auto"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      삭제
+                    </button>
+                  )}
                 </div>
 
                 {/* Summary Section */}

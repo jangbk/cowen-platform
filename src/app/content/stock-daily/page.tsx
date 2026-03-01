@@ -88,6 +88,7 @@ function yahooFinanceUrl(ticker: string): string {
   return `https://finance.yahoo.com/quote/${ticker}`;
 }
 
+// 한국 주식시장 색상 규칙: 상승=빨강, 하락=파랑 (미국과 반대)
 function getChangeColor(pct: string): string {
   const val = parseFloat(pct);
   if (isNaN(val)) return "";
@@ -128,16 +129,21 @@ function getMarketBadge(market: string): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-/** KR 주식 테이블 (상한가/하한가/급등락) */
-function StockTable({
+/** 통합 주식 테이블 (KR: 상한가/하한가/급등락, US: 급등락) */
+function GenericStockTable({
   rows,
   market,
   search,
+  region,
 }: {
   rows: SheetRow[];
   market: string;
   search: string;
+  region: MarketRegion;
 }) {
+  const isUS = region === "US";
+  const idField = isUS ? "Ticker" : "종목코드";
+
   const filtered = useMemo(() => {
     let list = [...rows];
     if (market !== "전체") {
@@ -148,12 +154,12 @@ function StockTable({
       list = list.filter(
         (r) =>
           (r["종목명"] || "").toLowerCase().includes(q) ||
-          (r["종목코드"] || "").includes(q) ||
+          (r[idField] || "").toLowerCase().includes(q) ||
           (r["사유"] || "").toLowerCase().includes(q)
       );
     }
     return list;
-  }, [rows, market, search]);
+  }, [rows, market, search, idField]);
 
   if (filtered.length === 0) {
     return (
@@ -172,13 +178,12 @@ function StockTable({
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="px-3 py-3 font-medium">날짜</th>
+            {isUS && <th className="px-3 py-3 font-medium">Ticker</th>}
             <th className="px-3 py-3 font-medium">종목명</th>
             <th className="px-3 py-3 font-medium">시장</th>
-            <th className="px-3 py-3 font-medium text-right">종가</th>
+            <th className="px-3 py-3 font-medium text-right">{isUS ? "종가 ($)" : "종가"}</th>
             <th className="px-3 py-3 font-medium text-right">등락률</th>
-            {hasDirection && (
-              <th className="px-3 py-3 font-medium text-center">방향</th>
-            )}
+            {hasDirection && <th className="px-3 py-3 font-medium text-center">방향</th>}
             <th className="px-3 py-3 font-medium text-right">거래량</th>
             <th className="px-3 py-3 font-medium">사유</th>
           </tr>
@@ -186,393 +191,149 @@ function StockTable({
         <tbody>
           {filtered.map((row, i) => (
             <tr
-              key={`${row["종목코드"]}-${row["날짜"]}-${i}`}
+              key={`${row[idField]}-${row["날짜"]}-${i}`}
               className="border-b border-border/50 hover:bg-muted/50 transition-colors"
             >
-              <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
-                {row["날짜"]}
-              </td>
-              <td className="px-3 py-3 font-medium">
-                <a
-                  href={naverFinanceUrl(row["종목코드"])}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-primary transition-colors"
-                >
-                  {row["종목명"]}
-                  <ExternalLink className="h-3 w-3 opacity-50" />
-                </a>
-              </td>
-              <td className="px-3 py-3">
-                <span
-                  className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}
-                >
-                  {row["시장"]}
-                </span>
-              </td>
-              <td className="px-3 py-3 text-right font-mono">
-                {formatNumber(row["종가"])}
-              </td>
-              <td
-                className={`px-3 py-3 text-right font-mono font-semibold ${getChangeColor(row["등락률(%)"])}`}
-              >
-                {parseFloat(row["등락률(%)"]) > 0 ? "+" : ""}
-                {row["등락률(%)"]}%
-              </td>
-              {hasDirection && (
-                <td className="px-3 py-3 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row["방향"] === "급등"
-                        ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                        : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                    }`}
-                  >
-                    {row["방향"]}
-                  </span>
-                </td>
-              )}
-              <td className="px-3 py-3 text-right font-mono text-muted-foreground">
-                {formatNumber(row["거래량"])}
-              </td>
-              <td className="px-3 py-3 text-muted-foreground max-w-[300px] truncate">
-                {row["사유"]}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** US 주식 테이블 (급등락) — Ticker + Yahoo Finance 링크 */
-function UsStockTable({
-  rows,
-  market,
-  search,
-}: {
-  rows: SheetRow[];
-  market: string;
-  search: string;
-}) {
-  const filtered = useMemo(() => {
-    let list = [...rows];
-    if (market !== "전체") {
-      list = list.filter((r) => r["시장"] === market);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          (r["종목명"] || "").toLowerCase().includes(q) ||
-          (r["Ticker"] || "").toLowerCase().includes(q) ||
-          (r["사유"] || "").toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [rows, market, search]);
-
-  if (filtered.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p>해당 조건의 데이터가 없습니다.</p>
-      </div>
-    );
-  }
-
-  const hasDirection = filtered.some((r) => r["방향"]);
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="px-3 py-3 font-medium">날짜</th>
-            <th className="px-3 py-3 font-medium">Ticker</th>
-            <th className="px-3 py-3 font-medium">종목명</th>
-            <th className="px-3 py-3 font-medium">시장</th>
-            <th className="px-3 py-3 font-medium text-right">종가 ($)</th>
-            <th className="px-3 py-3 font-medium text-right">등락률</th>
-            {hasDirection && (
-              <th className="px-3 py-3 font-medium text-center">방향</th>
-            )}
-            <th className="px-3 py-3 font-medium text-right">거래량</th>
-            <th className="px-3 py-3 font-medium">사유</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((row, i) => (
-            <tr
-              key={`${row["Ticker"]}-${row["날짜"]}-${i}`}
-              className="border-b border-border/50 hover:bg-muted/50 transition-colors"
-            >
-              <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
-                {row["날짜"]}
-              </td>
-              <td className="px-3 py-3 font-semibold">
-                <a
-                  href={yahooFinanceUrl(row["Ticker"])}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-primary transition-colors font-mono"
-                >
-                  {row["Ticker"]}
-                  <ExternalLink className="h-3 w-3 opacity-50" />
-                </a>
-              </td>
-              <td className="px-3 py-3 font-medium">{row["종목명"]}</td>
-              <td className="px-3 py-3">
-                <span
-                  className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}
-                >
-                  {row["시장"]}
-                </span>
-              </td>
-              <td className="px-3 py-3 text-right font-mono">
-                ${formatUsdPrice(row["종가"])}
-              </td>
-              <td
-                className={`px-3 py-3 text-right font-mono font-semibold ${getChangeColor(row["등락률(%)"])}`}
-              >
-                {parseFloat(row["등락률(%)"]) > 0 ? "+" : ""}
-                {row["등락률(%)"]}%
-              </td>
-              {hasDirection && (
-                <td className="px-3 py-3 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row["방향"] === "급등"
-                        ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                        : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                    }`}
-                  >
-                    {row["방향"]}
-                  </span>
-                </td>
-              )}
-              <td className="px-3 py-3 text-right font-mono text-muted-foreground">
-                {formatNumber(row["거래량"])}
-              </td>
-              <td className="px-3 py-3 text-muted-foreground max-w-[300px] truncate">
-                {row["사유"]}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** KR 크로스 테이블 */
-function CrossTable({
-  rows,
-  market,
-  search,
-}: {
-  rows: SheetRow[];
-  market: string;
-  search: string;
-}) {
-  const filtered = useMemo(() => {
-    let list = [...rows];
-    if (market !== "전체") {
-      list = list.filter((r) => r["시장"] === market);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          (r["종목명"] || "").toLowerCase().includes(q) ||
-          (r["종목코드"] || "").includes(q)
-      );
-    }
-    return list;
-  }, [rows, market, search]);
-
-  if (filtered.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <GitBranch className="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p>크로스 시그널이 없습니다.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="px-3 py-3 font-medium">날짜</th>
-            <th className="px-3 py-3 font-medium">종목명</th>
-            <th className="px-3 py-3 font-medium">시장</th>
-            <th className="px-3 py-3 font-medium text-center">유형</th>
-            <th className="px-3 py-3 font-medium text-right">단기MA</th>
-            <th className="px-3 py-3 font-medium text-right">장기MA</th>
-            <th className="px-3 py-3 font-medium text-right">종가</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((row, i) => {
-            const isGolden = (row["유형"] || "").includes("골든");
-            return (
-              <tr
-                key={`${row["종목코드"]}-${row["날짜"]}-${i}`}
-                className="border-b border-border/50 hover:bg-muted/50 transition-colors"
-              >
-                <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
-                  {row["날짜"]}
-                </td>
-                <td className="px-3 py-3 font-medium">
-                  <a
-                    href={naverFinanceUrl(row["종목코드"])}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-primary transition-colors"
-                  >
-                    {row["종목명"]}
-                    <ExternalLink className="h-3 w-3 opacity-50" />
-                  </a>
-                </td>
-                <td className="px-3 py-3">
-                  <span
-                    className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}
-                  >
-                    {row["시장"]}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      isGolden
-                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                        : "bg-red-500/10 text-red-600 dark:text-red-400"
-                    }`}
-                  >
-                    {isGolden ? "골든크로스" : "데드크로스"}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-right font-mono">
-                  {formatNumber(row["단기MA"])}
-                </td>
-                <td className="px-3 py-3 text-right font-mono">
-                  {formatNumber(row["장기MA"])}
-                </td>
-                <td className="px-3 py-3 text-right font-mono font-semibold">
-                  {formatNumber(row["종가"])}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** US 크로스 테이블 — Ticker + Yahoo Finance 링크 */
-function UsCrossTable({
-  rows,
-  market,
-  search,
-}: {
-  rows: SheetRow[];
-  market: string;
-  search: string;
-}) {
-  const filtered = useMemo(() => {
-    let list = [...rows];
-    if (market !== "전체") {
-      list = list.filter((r) => r["시장"] === market);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          (r["종목명"] || "").toLowerCase().includes(q) ||
-          (r["Ticker"] || "").toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [rows, market, search]);
-
-  if (filtered.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <GitBranch className="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p>크로스 시그널이 없습니다.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="px-3 py-3 font-medium">날짜</th>
-            <th className="px-3 py-3 font-medium">Ticker</th>
-            <th className="px-3 py-3 font-medium">종목명</th>
-            <th className="px-3 py-3 font-medium">시장</th>
-            <th className="px-3 py-3 font-medium text-center">유형</th>
-            <th className="px-3 py-3 font-medium text-right">단기MA</th>
-            <th className="px-3 py-3 font-medium text-right">장기MA</th>
-            <th className="px-3 py-3 font-medium text-right">종가 ($)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((row, i) => {
-            const isGolden = (row["유형"] || "").includes("골든");
-            return (
-              <tr
-                key={`${row["Ticker"]}-${row["날짜"]}-${i}`}
-                className="border-b border-border/50 hover:bg-muted/50 transition-colors"
-              >
-                <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
-                  {row["날짜"]}
-                </td>
+              <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{row["날짜"]}</td>
+              {isUS && (
                 <td className="px-3 py-3 font-semibold">
-                  <a
-                    href={yahooFinanceUrl(row["Ticker"])}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-primary transition-colors font-mono"
-                  >
+                  <a href={yahooFinanceUrl(row["Ticker"])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-primary transition-colors font-mono">
                     {row["Ticker"]}
                     <ExternalLink className="h-3 w-3 opacity-50" />
                   </a>
                 </td>
-                <td className="px-3 py-3 font-medium">{row["종목명"]}</td>
+              )}
+              <td className="px-3 py-3 font-medium">
+                {isUS ? (
+                  row["종목명"]
+                ) : (
+                  <a href={naverFinanceUrl(row["종목코드"])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-primary transition-colors">
+                    {row["종목명"]}
+                    <ExternalLink className="h-3 w-3 opacity-50" />
+                  </a>
+                )}
+              </td>
+              <td className="px-3 py-3">
+                <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}>{row["시장"]}</span>
+              </td>
+              <td className="px-3 py-3 text-right font-mono">
+                {isUS ? `$${formatUsdPrice(row["종가"])}` : formatNumber(row["종가"])}
+              </td>
+              <td className={`px-3 py-3 text-right font-mono font-semibold ${getChangeColor(row["등락률(%)"])}`}>
+                {parseFloat(row["등락률(%)"]) > 0 ? "+" : ""}{row["등락률(%)"]}%
+              </td>
+              {hasDirection && (
+                <td className="px-3 py-3 text-center">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${row["방향"] === "급등" ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"}`}>{row["방향"]}</span>
+                </td>
+              )}
+              <td className="px-3 py-3 text-right font-mono text-muted-foreground">{formatNumber(row["거래량"])}</td>
+              <td className="px-3 py-3 text-muted-foreground max-w-[300px] truncate">{row["사유"]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 통합 크로스 테이블 (KR/US) */
+function GenericCrossTable({
+  rows,
+  market,
+  search,
+  region,
+}: {
+  rows: SheetRow[];
+  market: string;
+  search: string;
+  region: MarketRegion;
+}) {
+  const isUS = region === "US";
+  const idField = isUS ? "Ticker" : "종목코드";
+
+  const filtered = useMemo(() => {
+    let list = [...rows];
+    if (market !== "전체") {
+      list = list.filter((r) => r["시장"] === market);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (r) =>
+          (r["종목명"] || "").toLowerCase().includes(q) ||
+          (r[idField] || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [rows, market, search, idField]);
+
+  if (filtered.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <GitBranch className="h-10 w-10 mx-auto mb-3 opacity-30" />
+        <p>크로스 시그널이 없습니다.</p>
+      </div>
+    );
+  }
+
+  const fmtPrice = isUS
+    ? (v: string) => `$${formatUsdPrice(v)}`
+    : (v: string) => formatNumber(v);
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="px-3 py-3 font-medium">날짜</th>
+            {isUS && <th className="px-3 py-3 font-medium">Ticker</th>}
+            <th className="px-3 py-3 font-medium">종목명</th>
+            <th className="px-3 py-3 font-medium">시장</th>
+            <th className="px-3 py-3 font-medium text-center">유형</th>
+            <th className="px-3 py-3 font-medium text-right">단기MA</th>
+            <th className="px-3 py-3 font-medium text-right">장기MA</th>
+            <th className="px-3 py-3 font-medium text-right">{isUS ? "종가 ($)" : "종가"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((row, i) => {
+            const isGolden = (row["유형"] || "").includes("골든");
+            return (
+              <tr
+                key={`${row[idField]}-${row["날짜"]}-${i}`}
+                className="border-b border-border/50 hover:bg-muted/50 transition-colors"
+              >
+                <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{row["날짜"]}</td>
+                {isUS && (
+                  <td className="px-3 py-3 font-semibold">
+                    <a href={yahooFinanceUrl(row["Ticker"])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-primary transition-colors font-mono">
+                      {row["Ticker"]}
+                      <ExternalLink className="h-3 w-3 opacity-50" />
+                    </a>
+                  </td>
+                )}
+                <td className="px-3 py-3 font-medium">
+                  {isUS ? (
+                    row["종목명"]
+                  ) : (
+                    <a href={naverFinanceUrl(row["종목코드"])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-primary transition-colors">
+                      {row["종목명"]}
+                      <ExternalLink className="h-3 w-3 opacity-50" />
+                    </a>
+                  )}
+                </td>
                 <td className="px-3 py-3">
-                  <span
-                    className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}
-                  >
-                    {row["시장"]}
-                  </span>
+                  <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${getMarketBadge(row["시장"])}`}>{row["시장"]}</span>
                 </td>
                 <td className="px-3 py-3 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      isGolden
-                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                        : "bg-red-500/10 text-red-600 dark:text-red-400"
-                    }`}
-                  >
+                  <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${isGolden ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
                     {isGolden ? "골든크로스" : "데드크로스"}
                   </span>
                 </td>
-                <td className="px-3 py-3 text-right font-mono">
-                  ${formatUsdPrice(row["단기MA"])}
-                </td>
-                <td className="px-3 py-3 text-right font-mono">
-                  ${formatUsdPrice(row["장기MA"])}
-                </td>
-                <td className="px-3 py-3 text-right font-mono font-semibold">
-                  ${formatUsdPrice(row["종가"])}
-                </td>
+                <td className="px-3 py-3 text-right font-mono">{fmtPrice(row["단기MA"])}</td>
+                <td className="px-3 py-3 text-right font-mono">{fmtPrice(row["장기MA"])}</td>
+                <td className="px-3 py-3 text-right font-mono font-semibold">{fmtPrice(row["종가"])}</td>
               </tr>
             );
           })}
@@ -907,14 +668,10 @@ export default function StockDailyPage() {
             <div className="p-4">
               <EconomicCalendar rows={currentRows} search={search} />
             </div>
-          ) : activeTab === "크로스" ? (
-            <CrossTable rows={currentRows} market={market} search={search} />
-          ) : activeTab === "US_크로스" ? (
-            <UsCrossTable rows={currentRows} market={market} search={search} />
-          ) : activeTab === "US_급등락" ? (
-            <UsStockTable rows={currentRows} market={market} search={search} />
+          ) : activeTab === "크로스" || activeTab === "US_크로스" ? (
+            <GenericCrossTable rows={currentRows} market={market} search={search} region={region} />
           ) : (
-            <StockTable rows={currentRows} market={market} search={search} />
+            <GenericStockTable rows={currentRows} market={market} search={search} region={region} />
           )}
         </div>
       )}

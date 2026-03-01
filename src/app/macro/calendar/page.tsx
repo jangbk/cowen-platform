@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Calendar, ChevronLeft, ChevronRight, Clock, AlertTriangle, Info, ChevronDown, TrendingUp, TrendingDown, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { startOfWeek, endOfWeek, addWeeks, format } from "date-fns";
 
 // ---------------------------------------------------------------------------
 // Indicator Guide Data
@@ -168,11 +169,18 @@ interface CalendarEvent {
 
 export default function MacroCalendarPage() {
   const [impactFilter, setImpactFilter] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("all");
+  const [weekOffset, setWeekOffset] = useState(0);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>(FALLBACK_EVENTS);
   const [dataSource, setDataSource] = useState<string>("loading");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Week range based on weekOffset
+  const weekStart = useMemo(() => startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
+  const weekEnd = useMemo(() => endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
+  const weekLabel = `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`;
 
   useEffect(() => {
     async function fetchCalendar() {
@@ -182,23 +190,17 @@ export default function MacroCalendarPage() {
         const json = await res.json();
 
         if (json.events && json.events.length > 0) {
-          // Map ForexFactory format to our format
-          const now = new Date();
-          const mapped: CalendarEvent[] = json.events.map((e: { name: string; date: string; prev: string; forecast: string; importance: string; country: string }) => {
-            // Parse the date string (e.g. "월 22:30")
-            const timePart = e.date.split(" ")[1] || e.date;
-            // Map event name to our guide keys
+          const mapped: CalendarEvent[] = json.events.map((e: { name: string; date: string; time?: string; prev: string; forecast: string; importance: string; country: string }) => {
             const mappedName = EVENT_NAME_MAP[e.name] || e.name;
-
             return {
-              date: now.toISOString().split("T")[0], // Use current date since ForexFactory gives day-of-week
-              time: timePart,
+              date: e.date,
+              time: e.time || "00:00",
               event: mappedName,
               actual: "",
               forecast: e.forecast || "-",
               previous: e.prev || "-",
               impact: e.importance,
-              country: e.country === "US" ? "US" : e.country,
+              country: e.country,
             };
           });
 
@@ -216,9 +218,14 @@ export default function MacroCalendarPage() {
     fetchCalendar();
   }, []);
 
-  const filteredEvents = events.filter(
-    (e) => impactFilter === "all" || e.impact === impactFilter
-  );
+  const filteredEvents = events.filter((e) => {
+    if (impactFilter !== "all" && e.impact !== impactFilter) return false;
+    if (countryFilter !== "all" && e.country !== countryFilter) return false;
+    // Filter by week range
+    const eventDate = new Date(e.date + "T00:00:00");
+    if (eventDate < weekStart || eventDate > weekEnd) return false;
+    return true;
+  });
 
   const groupedEvents: Record<string, CalendarEvent[]> = {};
   filteredEvents.forEach((event) => {
@@ -320,10 +327,15 @@ export default function MacroCalendarPage() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-          <button className="hover:text-primary"><ChevronLeft className="h-4 w-4" /></button>
-          <span className="text-sm font-medium min-w-[140px] text-center">February 7 - 14, 2026</span>
-          <button className="hover:text-primary"><ChevronRight className="h-4 w-4" /></button>
+          <button onClick={() => setWeekOffset((w) => w - 1)} className="hover:text-primary"><ChevronLeft className="h-4 w-4" /></button>
+          <span className="text-sm font-medium min-w-[180px] text-center">{weekLabel}</span>
+          <button onClick={() => setWeekOffset((w) => w + 1)} className="hover:text-primary"><ChevronRight className="h-4 w-4" /></button>
         </div>
+        {weekOffset !== 0 && (
+          <button onClick={() => setWeekOffset(0)} className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+            이번 주
+          </button>
+        )}
         <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
           {["all", "high", "medium", "low"].map((level) => (
             <button
@@ -337,13 +349,17 @@ export default function MacroCalendarPage() {
             </button>
           ))}
         </div>
-        <select className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-          <option>All Countries</option>
-          <option>United States</option>
-          <option>Eurozone</option>
-          <option>United Kingdom</option>
-          <option>China</option>
-          <option>Japan</option>
+        <select
+          value={countryFilter}
+          onChange={(e) => setCountryFilter(e.target.value)}
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
+        >
+          <option value="all">All Countries</option>
+          <option value="US">United States</option>
+          <option value="EU">Eurozone</option>
+          <option value="UK">United Kingdom</option>
+          <option value="CN">China</option>
+          <option value="JP">Japan</option>
         </select>
       </div>
 

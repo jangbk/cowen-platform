@@ -149,12 +149,16 @@ function DesktopNav() {
 function MobileNav({
   open,
   onClose,
+  triggerRef,
 }: {
   open: boolean;
   onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Close on Escape
   useEffect(() => {
@@ -178,15 +182,50 @@ function MobileNav({
     };
   }, [open]);
 
+  // Focus trap: focus close button on open, return focus on close
+  useEffect(() => {
+    if (open) {
+      closeButtonRef.current?.focus();
+    } else {
+      triggerRef.current?.focus();
+    }
+  }, [open, triggerRef]);
+
+  // Tab cycle within panel
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleTab);
+    return () => document.removeEventListener("keydown", handleTab);
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="모바일 메뉴">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      <div className="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border overflow-y-auto animate-slide-in-left">
+      <div ref={panelRef} className="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border overflow-y-auto animate-slide-in-left">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <Logo />
           <button
+            ref={closeButtonRef}
             onClick={onClose}
             className="p-2 hover:bg-muted rounded-lg"
             aria-label="메뉴 닫기"
@@ -275,6 +314,7 @@ function MobileNav({
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Global Cmd+K / Ctrl+K shortcut
   const handleGlobalKey = useCallback((e: KeyboardEvent) => {
@@ -295,6 +335,7 @@ export function Header() {
         <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-4 px-4">
           {/* Mobile menu button */}
           <button
+            ref={mobileMenuTriggerRef}
             onClick={() => setMobileOpen(true)}
             className="p-2 hover:bg-muted rounded-lg lg:hidden"
             aria-label="메뉴 열기"
@@ -325,7 +366,7 @@ export function Header() {
         </div>
       </header>
 
-      <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} triggerRef={mobileMenuTriggerRef} />
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
