@@ -62,6 +62,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: "Video Summaries", href: "/content/video-summaries" },
       { label: "Crypto News", href: "/content/studies" },
       { label: "Crypto Channels", href: "/content/premium-videos" },
+      { label: "Stock Daily", href: "/content/stock-daily" },
     ],
   },
 ];
