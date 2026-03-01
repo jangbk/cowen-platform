@@ -18,14 +18,37 @@ function extractVideoId(url: string): string | null {
 }
 
 /**
- * Fetch transcript directly from YouTube's internal API.
- * 1. Fetch the video page HTML
- * 2. Extract the serialized player response (ytInitialPlayerResponse)
- * 3. Find caption track URLs
- * 4. Fetch the XML caption track and parse text segments
+ * Method 1: Supadata API (reliable, works from cloud/serverless)
+ * Free tier: 100 requests/month, no credit card required
+ * Sign up: https://dash.supadata.ai?plan=basic
+ */
+async function fetchTranscriptSupadata(videoId: string): Promise<string | null> {
+  const apiKey = process.env.SUPADATA_API_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch(
+    `https://api.supadata.ai/v1/transcript?url=https://www.youtube.com/watch?v=${videoId}`,
+    {
+      headers: { "x-api-key": apiKey },
+    }
+  );
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (!data.content || !Array.isArray(data.content)) return null;
+
+  const text = data.content
+    .map((segment: { text: string }) => segment.text)
+    .join(" ");
+
+  return text || null;
+}
+
+/**
+ * Method 2: Direct YouTube page scraping (fallback, works locally but not on cloud)
  */
 async function fetchTranscriptDirect(videoId: string): Promise<string | null> {
-  // Step 1: Fetch video page
   const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
     headers: {
       "User-Agent":
@@ -37,9 +60,11 @@ async function fetchTranscriptDirect(videoId: string): Promise<string | null> {
   if (!pageRes.ok) return null;
   const html = await pageRes.text();
 
-  // Step 2: Extract captions from ytInitialPlayerResponse
   const playerMatch = html.match(
-    new RegExp("ytInitialPlayerResponse\\s*=\\s*(\\{.+?\\});(?:\\s*var\\s|</script>)", "s")
+    new RegExp(
+      "ytInitialPlayerResponse\\s*=\\s*(\\{.+?\\});(?:\\s*var\\s|</script>)",
+      "s"
+    )
   );
   if (!playerMatch) return null;
 
@@ -54,7 +79,6 @@ async function fetchTranscriptDirect(videoId: string): Promise<string | null> {
     playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
   if (!captionTracks || captionTracks.length === 0) return null;
 
-  // Step 3: Find best caption track (prefer ko, then en, then first available)
   let track = captionTracks.find(
     (t: { languageCode: string }) => t.languageCode === "ko"
   );
@@ -66,15 +90,12 @@ async function fetchTranscriptDirect(videoId: string): Promise<string | null> {
   if (!track) {
     track = captionTracks[0];
   }
-
   if (!track?.baseUrl) return null;
 
-  // Step 4: Fetch caption XML
   const captionRes = await fetch(track.baseUrl);
   if (!captionRes.ok) return null;
   const xml = await captionRes.text();
 
-  // Parse <text> elements from XML
   const textSegments: string[] = [];
   const textRe = /<text[^>]*>([\s\S]*?)<\/text>/gi;
   let m;
@@ -108,7 +129,10 @@ export async function POST(request: Request) {
     const videoId = extractVideoId(url);
     if (!videoId) {
       return NextResponse.json(
-        { status: "error", message: `유효하지 않은 YouTube URL입니다: ${url}` },
+        {
+          status: "error",
+          message: `유효하지 않은 YouTube URL입니다: ${url}`,
+        },
         { status: 400 }
       );
     }
@@ -119,13 +143,24 @@ export async function POST(request: Request) {
     );
     const metadata = await metaResponse.json();
 
-    // Fetch transcript
+    // Try Supadata API first, then fallback to direct scraping
     let transcript: string | null = null;
+
     try {
-      transcript = await fetchTranscriptDirect(videoId);
+      transcript = await fetchTranscriptSupadata(videoId);
     } catch (e) {
-      console.error("Transcript fetch error:", e);
+      console.error("Supadata transcript error:", e);
     }
+
+    if (!transcript) {
+      try {
+        transcript = await fetchTranscriptDirect(videoId);
+      } catch (e) {
+        console.error("Direct transcript error:", e);
+      }
+    }
+
+    const noApiKey = !process.env.SUPADATA_API_KEY;
 
     if (!transcript) {
       return NextResponse.json({
@@ -137,8 +172,9 @@ export async function POST(request: Request) {
           metadata.thumbnail_url ||
           `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         transcript: null,
-        message:
-          "트랜스크립트를 가져올 수 없습니다. 자막이 없는 영상일 수 있습니다.",
+        message: noApiKey
+          ? "트랜스크립트 API 키가 설정되지 않았습니다. .env.local에 SUPADATA_API_KEY를 추가해주세요. (무료: supadata.ai)"
+          : "트랜스크립트를 가져올 수 없습니다. 자막이 없는 영상일 수 있습니다.",
       });
     }
 
