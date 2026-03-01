@@ -139,14 +139,41 @@ export default function VideoSummariesPage() {
   const [notionMessage, setNotionMessage] = useState("");
   const [loadingStep, setLoadingStep] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
   const { toast } = useToast();
 
-  // Load from localStorage on mount
+  // Load from localStorage first, then sync from Notion
   useEffect(() => {
-    const loaded = loadSummaries();
-    setSummaries(loaded);
-    setExpandedId(loaded[0]?.id || null);
+    const local = loadSummaries();
+    setSummaries(local);
+    setExpandedId(local[0]?.id || null);
     setHydrated(true);
+
+    // Notion에서 불러오기 (기기 간 동기화)
+    fetch("/api/notion/summaries")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "ok" && data.summaries?.length > 0) {
+          const notionItems: VideoSummary[] = data.summaries;
+          // Notion에 있는 URL 목록
+          const notionUrls = new Set(notionItems.map((s) => s.videoUrl));
+          // localStorage에만 있는 항목 (Notion에 없는 것)
+          const localOnly = local.filter(
+            (s) => s.videoUrl && !notionUrls.has(s.videoUrl)
+          );
+          // Notion 데이터 + localStorage 전용 데이터 병합
+          const merged = [...notionItems, ...localOnly];
+          setSummaries(merged);
+          setExpandedId(merged[0]?.id || null);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch { /* ignore */ }
+        }
+      })
+      .catch(() => {
+        /* Notion 로드 실패 시 localStorage 데이터 유지 */
+      });
   }, []);
 
   // Save to localStorage whenever summaries change
@@ -156,6 +183,113 @@ export default function VideoSummariesPage() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch { /* storage full, ignore */ }
   }, []);
+
+  // 새 요약을 Notion에 자동 저장 (백그라운드)
+  const autoSaveToNotion = useCallback(
+    async (summary: VideoSummary) => {
+      try {
+        const res = await fetch("/api/notion/save-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: summary.title,
+            videoUrl: summary.videoUrl,
+            channel: summary.channel,
+            publishedDate: summary.date,
+            summary: summary.summary,
+            investmentGuide: summary.investmentGuide,
+            keyPoints: summary.keyPoints,
+            tags: summary.tags,
+          }),
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          // Notion 저장 성공 → 상태 업데이트
+          setSummaries((prev) => {
+            const updated = prev.map((s) =>
+              s.id === summary.id
+                ? { ...s, savedToNotion: true, notionUrl: data.notionUrl }
+                : s
+            );
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch { /* ignore */ }
+            return updated;
+          });
+        }
+      } catch {
+        // Notion 저장 실패 — localStorage에는 이미 저장됨
+      }
+    },
+    []
+  );
+
+  // 모든 로컬 요약을 Notion에 일괄 동기화
+  const handleSyncAllToNotion = async () => {
+    const unsaved = summaries.filter((s) => !s.savedToNotion);
+    if (unsaved.length === 0) {
+      toast("success", "모든 요약이 이미 Notion에 저장되어 있습니다.");
+      return;
+    }
+
+    setSyncingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < unsaved.length; i++) {
+      const s = unsaved[i];
+      setSyncProgress(`${i + 1}/${unsaved.length} 동기화 중: ${s.title.slice(0, 30)}...`);
+
+      try {
+        const res = await fetch("/api/notion/save-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: s.title,
+            videoUrl: s.videoUrl,
+            channel: s.channel,
+            publishedDate: s.date,
+            summary: s.summary,
+            investmentGuide: s.investmentGuide,
+            keyPoints: s.keyPoints,
+            tags: s.tags,
+          }),
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          successCount++;
+          setSummaries((prev) => {
+            const updated = prev.map((item) =>
+              item.id === s.id
+                ? { ...item, savedToNotion: true, notionUrl: data.notionUrl }
+                : item
+            );
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch { /* ignore */ }
+            return updated;
+          });
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+
+      // Notion API 속도 제한 방지 (3 req/s)
+      if (i < unsaved.length - 1) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+
+    setSyncingAll(false);
+    setSyncProgress("");
+    if (failCount === 0) {
+      toast("success", `${successCount}개 요약을 Notion에 저장했습니다.`);
+    } else {
+      toast("error", `${successCount}개 성공, ${failCount}개 실패`);
+    }
+  };
 
   const handleAddVideo = async () => {
     if (!youtubeUrl.trim()) return;
@@ -216,6 +350,8 @@ export default function VideoSummariesPage() {
           saveSummaries([newSummary, ...summaries]);
           setYoutubeUrl("");
           setExpandedId(newId);
+          // Notion에 자동 저장 (백그라운드)
+          autoSaveToNotion(newSummary);
         } else {
           // AI summarization failed - show transcript as fallback
           const newSummary: VideoSummary = {
@@ -236,6 +372,7 @@ export default function VideoSummariesPage() {
           saveSummaries([newSummary, ...summaries]);
           setYoutubeUrl("");
           setExpandedId(newId);
+          autoSaveToNotion(newSummary);
         }
       } else {
         // No transcript available
@@ -257,6 +394,7 @@ export default function VideoSummariesPage() {
         saveSummaries([newSummary, ...summaries]);
         setYoutubeUrl("");
         setExpandedId(newId);
+        autoSaveToNotion(newSummary);
       }
     } catch {
       toast("error", "영상 정보를 가져오는데 실패했습니다.");
@@ -412,12 +550,37 @@ ${summary.tags.join(", ")}`;
         )}
       </div>
 
-      {/* Summary Count */}
-      <div className="flex items-center justify-between">
+      {/* Summary Count + Sync Button */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">
           총 {summaries.length}개의 영상 요약
+          {hydrated && summaries.filter((s) => !s.savedToNotion).length > 0 && (
+            <span className="ml-2 text-orange-500">
+              ({summaries.filter((s) => !s.savedToNotion).length}개 미동기화)
+            </span>
+          )}
         </span>
+        {hydrated && summaries.filter((s) => !s.savedToNotion).length > 0 && (
+          <button
+            onClick={handleSyncAllToNotion}
+            disabled={syncingAll}
+            className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {syncingAll ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="h-4 w-4" />
+            )}
+            {syncingAll ? "동기화 중..." : "모두 Notion에 동기화"}
+          </button>
+        )}
       </div>
+      {syncingAll && syncProgress && (
+        <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2.5 text-sm text-blue-600 dark:text-blue-400">
+          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+          {syncProgress}
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="space-y-4">

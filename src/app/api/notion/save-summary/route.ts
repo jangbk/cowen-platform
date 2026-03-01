@@ -5,6 +5,19 @@ import { NextResponse } from "next/server";
 
 const NOTION_API_URL = "https://api.notion.com/v1";
 
+/** Notion rich_text content limit: 2000 chars per text object */
+function splitRichText(
+  text: string,
+  maxLen = 2000
+): { text: { content: string } }[] {
+  if (!text) return [{ text: { content: "" } }];
+  const chunks: { text: { content: string } }[] = [];
+  for (let i = 0; i < text.length; i += maxLen) {
+    chunks.push({ text: { content: text.slice(i, i + maxLen) } });
+  }
+  return chunks;
+}
+
 interface SaveSummaryRequest {
   title: string;
   videoUrl: string;
@@ -17,8 +30,8 @@ interface SaveSummaryRequest {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.NOTION_API_KEY;
-  const databaseId = process.env.NOTION_DATABASE_ID;
+  const apiKey = process.env.NOTION_API_KEY?.trim();
+  const databaseId = process.env.NOTION_DATABASE_ID?.trim();
 
   if (!apiKey || !databaseId) {
     return NextResponse.json(
@@ -76,7 +89,7 @@ export async function POST(request: Request) {
             object: "block",
             type: "paragraph",
             paragraph: {
-              rich_text: [{ text: { content: body.summary } }],
+              rich_text: splitRichText(body.summary),
             },
           },
           // Divider
@@ -94,7 +107,7 @@ export async function POST(request: Request) {
             object: "block",
             type: "paragraph",
             paragraph: {
-              rich_text: [{ text: { content: body.investmentGuide } }],
+              rich_text: splitRichText(body.investmentGuide),
             },
           },
           // Divider
@@ -182,8 +195,8 @@ export async function POST(request: Request) {
 
 // GET: Check Notion connection status
 export async function GET() {
-  const apiKey = process.env.NOTION_API_KEY;
-  const databaseId = process.env.NOTION_DATABASE_ID;
+  const apiKey = process.env.NOTION_API_KEY?.trim();
+  const databaseId = process.env.NOTION_DATABASE_ID?.trim();
 
   if (!apiKey || !databaseId) {
     return NextResponse.json({
