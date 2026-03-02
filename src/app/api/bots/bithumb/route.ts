@@ -15,8 +15,8 @@ import {
   calcAvgWinLoss,
 } from "@/lib/bot-metrics";
 
-const API_KEY = process.env.BITHUMB_API_KEY ?? "";
-const SECRET_KEY = process.env.BITHUMB_SECRET_KEY ?? "";
+const API_KEY = (process.env.BITHUMB_API_KEY ?? "").trim();
+const SECRET_KEY = (process.env.BITHUMB_SECRET_KEY ?? "").trim();
 const BASE_URL = "https://api.bithumb.com";
 
 // --- JWT 생성 (Open API 2.0) ---

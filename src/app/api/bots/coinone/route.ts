@@ -17,8 +17,8 @@ import {
 // Force IPv4 to avoid IPv6 IP mismatch with Coinone whitelist
 dns.setDefaultResultOrder("ipv4first");
 
-const ACCESS_TOKEN = process.env.COINONE_ACCESS_TOKEN ?? "";
-const SECRET_KEY = process.env.COINONE_SECRET_KEY ?? "";
+const ACCESS_TOKEN = (process.env.COINONE_ACCESS_TOKEN ?? "").trim();
+const SECRET_KEY = (process.env.COINONE_SECRET_KEY ?? "").trim();
 const BASE_URL = "https://api.coinone.co.kr";
 
 function coinoneSignature(payload: string): string {

@@ -12,10 +12,10 @@ import {
   calcAvgWinLoss,
 } from "@/lib/bot-metrics";
 
-const APP_KEY = process.env.KIS_APP_KEY ?? "";
-const APP_SECRET = process.env.KIS_APP_SECRET ?? "";
-const CANO = process.env.KIS_CANO ?? "";
-const ACNT_PRDT_CD = process.env.KIS_ACNT_PRDT_CD ?? "01";
+const APP_KEY = (process.env.KIS_APP_KEY ?? "").trim();
+const APP_SECRET = (process.env.KIS_APP_SECRET ?? "").trim();
+const CANO = (process.env.KIS_CANO ?? "").trim();
+const ACNT_PRDT_CD = (process.env.KIS_ACNT_PRDT_CD ?? "01").trim();
 const BASE_URL = "https://openapivts.koreainvestment.com:29443"; // 모의투자
 
 const WATCHLIST = [
