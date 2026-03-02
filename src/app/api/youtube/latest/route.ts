@@ -36,7 +36,7 @@ async function fetchFromNotion(): Promise<VideoInfo | null> {
           property: "Channel",
           rich_text: { does_not_equal: "뉴스 분석" },
         },
-        sorts: [{ property: "Date", direction: "descending" }],
+        sorts: [{ timestamp: "created_time", direction: "descending" }],
         page_size: 1,
       }),
     });
@@ -85,7 +85,7 @@ export async function GET() {
       {
         headers: {
           "Cache-Control":
-            "public, s-maxage=1800, stale-while-revalidate=3600",
+            "public, s-maxage=300, stale-while-revalidate=600",
         },
       }
     );
@@ -105,7 +105,7 @@ export async function GET() {
     {
       headers: {
         "Cache-Control":
-          "public, s-maxage=1800, stale-while-revalidate=3600",
+          "public, s-maxage=300, stale-while-revalidate=600",
       },
     }
   );
