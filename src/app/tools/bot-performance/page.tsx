@@ -177,10 +177,21 @@ function getStatusBadge(status: string) {
 }
 
 const CAPITALS_KEY = "bot-capitals";
+const SELECTED_BOT_KEY = "bot-selected";
 
 export default function BotPerformancePage() {
   const [strategies, setStrategies] = useState<BotStrategy[]>(FALLBACK_STRATEGIES);
-  const [selectedBot, setSelectedBot] = useState(FALLBACK_STRATEGIES[0].id);
+  const [selectedBot, setSelectedBotState] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(SELECTED_BOT_KEY) || FALLBACK_STRATEGIES[0].id;
+    }
+    return FALLBACK_STRATEGIES[0].id;
+  });
+
+  function setSelectedBot(id: string) {
+    setSelectedBotState(id);
+    localStorage.setItem(SELECTED_BOT_KEY, id);
+  }
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -231,7 +242,7 @@ export default function BotPerformancePage() {
         const live = data.strategies as BotStrategy[];
         if (live && live.length > 0) {
           setStrategies(live);
-          setIsLive(live.some((s: BotStrategy & { _live?: boolean }) => s._live));
+          setIsLive(true);
           setLastUpdated(data.timestamp);
           if (!live.find((s: BotStrategy) => s.id === selectedBot)) {
             setSelectedBot(live[0].id);
