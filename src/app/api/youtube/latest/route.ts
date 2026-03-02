@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 
 // ---------------------------------------------------------------------------
 // GET /api/youtube/latest
-// Fetches latest video from a YouTube channel via RSS feed.
-// No API key required - uses the public Atom feed.
+// Notion에 저장된 최신 영상 요약을 반환합니다.
+// Fallback: YouTube RSS feed → 샘플 데이터
 // ---------------------------------------------------------------------------
 
-// YouTube channel for latest video feed
-const CHANNEL_ID = "UCRvqjQPSeaWn-uEx-w0XOIg";
-const RSS_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
+const NOTION_API_URL = "https://api.notion.com/v1";
 
 interface VideoInfo {
   videoId: string;
@@ -19,45 +17,58 @@ interface VideoInfo {
   link: string;
 }
 
-function extractTag(xml: string, tag: string): string {
-  const match = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`));
-  return match ? match[1].trim() : "";
-}
+/** Notion DB에서 최신 영상 요약 가져오기 */
+async function fetchFromNotion(): Promise<VideoInfo | null> {
+  const apiKey = process.env.NOTION_API_KEY?.trim();
+  const databaseId = process.env.NOTION_DATABASE_ID?.trim();
+  if (!apiKey || !databaseId) return null;
 
-function extractAttr(xml: string, tag: string, attr: string): string {
-  const match = xml.match(new RegExp(`<${tag}[^>]*${attr}="([^"]*)"`, "i"));
-  return match ? match[1] : "";
-}
-
-async function fetchLatestVideo(): Promise<VideoInfo | null> {
   try {
-    const res = await fetch(RSS_URL, {
-      next: { revalidate: 1800 },
-    } as RequestInit);
+    const res = await fetch(`${NOTION_API_URL}/databases/${databaseId}/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify({
+        filter: {
+          property: "Channel",
+          rich_text: { does_not_equal: "뉴스 분석" },
+        },
+        sorts: [{ property: "Date", direction: "descending" }],
+        page_size: 1,
+      }),
+    });
 
     if (!res.ok) return null;
+    const data = await res.json();
+    const page = data.results?.[0];
+    if (!page) return null;
 
-    const xml = await res.text();
+    const props = page.properties;
+    const title =
+      props.Name?.title?.[0]?.plain_text || "Untitled";
+    const videoUrl = props.URL?.url || "";
+    const channel =
+      props.Channel?.rich_text?.[0]?.plain_text || "";
+    const date = props.Date?.date?.start || "";
 
-    // Extract the first <entry> block
-    const entryMatch = xml.match(/<entry>([\s\S]*?)<\/entry>/);
-    if (!entryMatch) return null;
+    // URL에서 videoId 추출
+    const videoIdMatch = videoUrl.match(
+      /(?:v=|youtu\.be\/|shorts\/|live\/)([a-zA-Z0-9_-]{11})/
+    );
+    const videoId = videoIdMatch?.[1] || "";
 
-    const entry = entryMatch[1];
-
-    const videoId = extractTag(entry, "yt:videoId");
-    const title = extractTag(entry, "title");
-    const published = extractTag(entry, "published");
-    const author = extractTag(xml, "name"); // Channel name from feed level
-    const link = extractAttr(entry, "link", "href");
+    if (!videoId) return null;
 
     return {
       videoId,
       title,
       thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      author: author || "JangBK",
-      published,
-      link: link || `https://www.youtube.com/watch?v=${videoId}`,
+      author: channel,
+      published: date,
+      link: videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
     };
   } catch {
     return null;
@@ -65,34 +76,37 @@ async function fetchLatestVideo(): Promise<VideoInfo | null> {
 }
 
 export async function GET() {
-  const video = await fetchLatestVideo();
+  // 1. Notion에서 최신 영상 요약
+  const notionVideo = await fetchFromNotion();
 
-  if (video) {
+  if (notionVideo) {
     return NextResponse.json(
-      { source: "youtube_rss", ...video },
+      { source: "notion", ...notionVideo },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+          "Cache-Control":
+            "public, s-maxage=1800, stale-while-revalidate=3600",
         },
-      },
+      }
     );
   }
 
-  // Fallback
+  // 2. Fallback: 샘플 데이터
   return NextResponse.json(
     {
       source: "sample",
       videoId: "eAzoXY1GfIo",
       title: "Bitcoin: Dubious Speculation",
       thumbnail: "https://img.youtube.com/vi/eAzoXY1GfIo/mqdefault.jpg",
-      author: "JangBK",
+      author: "Benjamin Cowen",
       published: new Date().toISOString(),
       link: "https://www.youtube.com/watch?v=eAzoXY1GfIo",
     },
     {
       headers: {
-        "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+        "Cache-Control":
+          "public, s-maxage=1800, stale-while-revalidate=3600",
       },
-    },
+    }
   );
 }
