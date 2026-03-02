@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const NOTION_API_URL = "https://api.notion.com/v1";
 
 /**
- * GET /api/notion/summaries
- * Notion DB에서 저장된 영상 요약 목록을 불러옵니다.
+ * GET /api/notion/news-analyses
+ * Notion DB에서 뉴스 분석 목록을 불러옵니다 (Channel = "뉴스 분석").
  */
 export async function GET() {
   const apiKey = process.env.NOTION_API_KEY?.trim();
@@ -13,13 +13,12 @@ export async function GET() {
   if (!apiKey || !databaseId) {
     return NextResponse.json({
       status: "error",
-      summaries: [],
+      analyses: [],
       message: "Notion not configured",
     });
   }
 
   try {
-    // 1. Query database (최신순 정렬)
     const dbRes = await fetch(
       `${NOTION_API_URL}/databases/${databaseId}/query`,
       {
@@ -32,7 +31,7 @@ export async function GET() {
         body: JSON.stringify({
           filter: {
             property: "Channel",
-            rich_text: { does_not_equal: "뉴스 분석" },
+            rich_text: { equals: "뉴스 분석" },
           },
           sorts: [{ property: "Date", direction: "descending" }],
           page_size: 50,
@@ -45,28 +44,41 @@ export async function GET() {
     const pages = dbData.results || [];
 
     if (pages.length === 0) {
-      return NextResponse.json({ status: "ok", summaries: [] });
+      return NextResponse.json({ status: "ok", analyses: [] });
     }
 
-    // 2. 각 페이지의 블록(내용)을 병렬로 불러오기
-    const summaries = await Promise.all(
+    const analyses = await Promise.all(
       pages.map(async (page: Record<string, unknown>) => {
-        const props = page.properties as Record<string, Record<string, unknown>>;
-        const titleArr = (props.Name as Record<string, unknown>)?.title as Array<{ plain_text: string }> | undefined;
+        const props = page.properties as Record<
+          string,
+          Record<string, unknown>
+        >;
+        const titleArr = (props.Name as Record<string, unknown>)
+          ?.title as Array<{ plain_text: string }> | undefined;
         const title = titleArr?.[0]?.plain_text || "Untitled";
-        const videoUrl = ((props.URL as Record<string, unknown>)?.url as string) || "";
-        const channelArr = (props.Channel as Record<string, unknown>)?.rich_text as Array<{ plain_text: string }> | undefined;
-        const channel = channelArr?.[0]?.plain_text || "";
-        const dateObj = (props.Date as Record<string, unknown>)?.date as { start: string } | undefined;
+        const sourceUrl =
+          ((props.URL as Record<string, unknown>)?.url as string) || "";
+        const dateObj = (props.Date as Record<string, unknown>)
+          ?.date as { start: string } | undefined;
         const date = dateObj?.start || "";
-        const tagsArr = (props.Tags as Record<string, unknown>)?.multi_select as Array<{ name: string }> | undefined;
-        const tags = (tagsArr || []).map((t) => t.name);
+        const tagsArr = (props.Tags as Record<string, unknown>)
+          ?.multi_select as Array<{ name: string }> | undefined;
+        const allTags = (tagsArr || []).map((t) => t.name);
 
-        // URL에서 videoId 추출
-        const videoIdMatch = videoUrl.match(
-          /(?:v=|youtu\.be\/|shorts\/|live\/)([a-zA-Z0-9_-]{11})/
-        );
-        const videoId = videoIdMatch?.[1] || "";
+        // 태그에서 sentiment와 affectedAssets 추출
+        let sentiment: string = "neutral";
+        const affectedAssets: string[] = [];
+        const tags: string[] = [];
+
+        for (const tag of allTags) {
+          if (tag.startsWith("sentiment:")) {
+            sentiment = tag.replace("sentiment:", "");
+          } else if (tag.startsWith("asset:")) {
+            affectedAssets.push(tag.replace("asset:", ""));
+          } else {
+            tags.push(tag);
+          }
+        }
 
         // 블록 내용 불러오기
         let summary = "";
@@ -94,7 +106,8 @@ export async function GET() {
                   block.heading_2?.rich_text
                     ?.map((r: { plain_text: string }) => r.plain_text)
                     .join("") || "";
-                if (text.includes("영상 요약")) currentSection = "summary";
+                if (text.includes("영상 요약") || text.includes("분석 요약"))
+                  currentSection = "summary";
                 else if (text.includes("투자 가이드"))
                   currentSection = "guide";
                 else if (text.includes("핵심 포인트"))
@@ -108,8 +121,7 @@ export async function GET() {
                 if (currentSection === "summary" && text) {
                   summary += (summary ? "\n\n" : "") + text;
                 } else if (currentSection === "guide" && text) {
-                  investmentGuide +=
-                    (investmentGuide ? "\n\n" : "") + text;
+                  investmentGuide += (investmentGuide ? "\n\n" : "") + text;
                 }
               } else if (
                 block.type === "bulleted_list_item" &&
@@ -124,22 +136,20 @@ export async function GET() {
             }
           }
         } catch {
-          // 블록 로드 실패 시 빈 내용으로 계속
+          // 블록 로드 실패
         }
 
         return {
           id: (page as Record<string, string>).id,
-          videoUrl,
-          videoId,
           title,
-          channel,
+          source: sourceUrl ? ("url" as const) : ("text" as const),
+          sourceUrl: sourceUrl || undefined,
           date,
-          thumbnailUrl: videoId
-            ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
-            : "",
           summary,
           investmentGuide,
           keyPoints,
+          sentiment,
+          affectedAssets,
           tags,
           savedToNotion: true,
           notionUrl: (page as Record<string, string>).url,
@@ -147,12 +157,12 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({ status: "ok", summaries });
+    return NextResponse.json({ status: "ok", analyses });
   } catch (error) {
-    console.error("Notion load error:", error);
+    console.error("Notion news load error:", error);
     return NextResponse.json({
       status: "error",
-      summaries: [],
+      analyses: [],
       message:
         error instanceof Error ? error.message : "Failed to load from Notion",
     });
@@ -160,23 +170,15 @@ export async function GET() {
 }
 
 /**
- * DELETE /api/notion/summaries?pageId=xxx
- * Notion 페이지를 아카이브(삭제)합니다.
+ * DELETE /api/notion/news-analyses?pageId=xxx
  */
 export async function DELETE(req: NextRequest) {
   const apiKey = process.env.NOTION_API_KEY?.trim();
   const pageId = req.nextUrl.searchParams.get("pageId");
 
-  if (!apiKey) {
+  if (!apiKey || !pageId) {
     return NextResponse.json(
-      { status: "error", message: "Notion not configured" },
-      { status: 400 }
-    );
-  }
-
-  if (!pageId) {
-    return NextResponse.json(
-      { status: "error", message: "pageId is required" },
+      { status: "error", message: "Missing apiKey or pageId" },
       { status: 400 }
     );
   }

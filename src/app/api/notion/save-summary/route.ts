@@ -57,13 +57,13 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         parent: { database_id: databaseId },
-        icon: { type: "emoji", emoji: "🎬" },
+        icon: { type: "emoji", emoji: body.channel === "뉴스 분석" ? "📰" : "🎬" },
         properties: {
           Name: {
             title: [{ text: { content: body.title } }],
           },
           URL: {
-            url: body.videoUrl,
+            url: body.videoUrl || null,
           },
           Channel: {
             rich_text: [{ text: { content: body.channel } }],
@@ -130,22 +130,26 @@ export async function POST(request: Request) {
           })),
           // Divider
           { object: "block", type: "divider", divider: {} },
-          // Source
-          {
-            object: "block",
-            type: "paragraph",
-            paragraph: {
-              rich_text: [
-                { text: { content: "원본 영상: " } },
+          // Source (only if URL exists)
+          ...(body.videoUrl
+            ? [
                 {
-                  text: {
-                    content: body.videoUrl,
-                    link: { url: body.videoUrl },
+                  object: "block" as const,
+                  type: "paragraph" as const,
+                  paragraph: {
+                    rich_text: [
+                      { text: { content: "원본: " } },
+                      {
+                        text: {
+                          content: body.videoUrl,
+                          link: { url: body.videoUrl },
+                        },
+                      },
+                    ],
                   },
                 },
-              ],
-            },
-          },
+              ]
+            : []),
           // Timestamp
           {
             object: "block",

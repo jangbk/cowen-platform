@@ -36,6 +36,8 @@ interface NewsAnalysis {
   sentiment: "bullish" | "bearish" | "neutral" | "mixed";
   affectedAssets: string[];
   tags: string[];
+  savedToNotion?: boolean;
+  notionUrl?: string;
 }
 
 // ─── Sentiment Config ────────────────────────────────────────────
@@ -87,14 +89,35 @@ export default function NewsAnalysisPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [notionStatus, setNotionStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
   const { toast } = useToast();
 
-  // Load from localStorage on mount
+  // Load from localStorage first, then sync from Notion
   useEffect(() => {
-    const loaded = loadAnalyses();
-    setAnalyses(loaded);
-    if (loaded.length > 0) setExpandedId(loaded[0].id);
+    const local = loadAnalyses();
+    setAnalyses(local);
+    if (local.length > 0) setExpandedId(local[0].id);
     setHydrated(true);
+
+    // Notion에서 불러오기 (기기 간 동기화)
+    fetch("/api/notion/news-analyses")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "ok" && data.analyses?.length > 0) {
+          const notionItems: NewsAnalysis[] = data.analyses;
+          const notionTitles = new Set(notionItems.map((a) => a.title));
+          // localStorage에만 있는 항목
+          const localOnly = local.filter((a) => !notionTitles.has(a.title));
+          const merged = [...notionItems, ...localOnly];
+          setAnalyses(merged);
+          if (merged.length > 0) setExpandedId(merged[0].id);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch { /* ignore */ }
+        }
+      })
+      .catch(() => { /* Notion 로드 실패 시 localStorage 유지 */ });
   }, []);
 
   // Save to localStorage
@@ -106,6 +129,120 @@ export default function NewsAnalysisPage() {
       /* storage full, ignore */
     }
   }, []);
+
+  // Notion 저장용 태그 생성 (sentiment + affectedAssets를 태그에 포함)
+  const buildNotionTags = useCallback((analysis: NewsAnalysis) => {
+    return [
+      `sentiment:${analysis.sentiment}`,
+      ...analysis.affectedAssets.map((a) => `asset:${a}`),
+      ...analysis.tags,
+    ];
+  }, []);
+
+  // 새 분석을 Notion에 자동 저장 (백그라운드)
+  const autoSaveToNotion = useCallback(
+    async (analysis: NewsAnalysis) => {
+      try {
+        const res = await fetch("/api/notion/save-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: analysis.title,
+            videoUrl: analysis.sourceUrl || "",
+            channel: "뉴스 분석",
+            publishedDate: analysis.date,
+            summary: analysis.summary,
+            investmentGuide: analysis.investmentGuide,
+            keyPoints: analysis.keyPoints,
+            tags: buildNotionTags(analysis),
+          }),
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          setAnalyses((prev) => {
+            const updated = prev.map((a) =>
+              a.id === analysis.id
+                ? { ...a, savedToNotion: true, notionUrl: data.notionUrl }
+                : a
+            );
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch { /* ignore */ }
+            return updated;
+          });
+        }
+      } catch {
+        // Notion 저장 실패 — localStorage에는 이미 저장됨
+      }
+    },
+    [buildNotionTags]
+  );
+
+  // 모든 로컬 분석을 Notion에 일괄 동기화
+  const handleSyncAllToNotion = async () => {
+    const unsaved = analyses.filter((a) => !a.savedToNotion);
+    if (unsaved.length === 0) {
+      toast("success", "모든 분석이 이미 Notion에 저장되어 있습니다.");
+      return;
+    }
+
+    setSyncingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < unsaved.length; i++) {
+      const a = unsaved[i];
+      setSyncProgress(`${i + 1}/${unsaved.length} 동기화 중: ${a.title.slice(0, 30)}...`);
+
+      try {
+        const res = await fetch("/api/notion/save-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: a.title,
+            videoUrl: a.sourceUrl || "",
+            channel: "뉴스 분석",
+            publishedDate: a.date,
+            summary: a.summary,
+            investmentGuide: a.investmentGuide,
+            keyPoints: a.keyPoints,
+            tags: buildNotionTags(a),
+          }),
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          successCount++;
+          setAnalyses((prev) => {
+            const updated = prev.map((item) =>
+              item.id === a.id
+                ? { ...item, savedToNotion: true, notionUrl: data.notionUrl }
+                : item
+            );
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch { /* ignore */ }
+            return updated;
+          });
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+
+      if (i < unsaved.length - 1) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+
+    setSyncingAll(false);
+    setSyncProgress("");
+    if (failCount === 0) {
+      toast("success", `${successCount}개 분석을 Notion에 저장했습니다.`);
+    } else {
+      toast("error", `${successCount}개 성공, ${failCount}개 실패`);
+    }
+  };
 
   const handleAnalyze = async () => {
     const isTextMode = activeTab === "text";
@@ -174,6 +311,8 @@ export default function NewsAnalysisPage() {
         return updated;
       });
       setExpandedId(newId);
+      // Notion에 자동 저장 (백그라운드)
+      autoSaveToNotion(newAnalysis);
 
       // Clear inputs
       setTitleInput("");
@@ -211,6 +350,7 @@ ${analysis.tags.join(", ")}`;
   };
 
   const handleDeleteConfirm = (id: string) => {
+    const target = analyses.find((a) => a.id === id);
     setAnalyses((prev) => {
       const updated = prev.filter((a) => a.id !== id);
       try {
@@ -221,6 +361,11 @@ ${analysis.tags.join(", ")}`;
     if (expandedId === id) setExpandedId(null);
     setDeletingId(null);
     toast("success", "분석이 삭제되었습니다.");
+
+    // Notion에서도 삭제
+    if (target?.savedToNotion) {
+      fetch(`/api/notion/news-analyses?pageId=${id}`, { method: "DELETE" }).catch(() => {});
+    }
   };
 
   const handleSaveToNotion = async (analysis: NewsAnalysis) => {
@@ -237,13 +382,24 @@ ${analysis.tags.join(", ")}`;
           summary: analysis.summary,
           investmentGuide: analysis.investmentGuide,
           keyPoints: analysis.keyPoints,
-          tags: analysis.tags,
+          tags: buildNotionTags(analysis),
         }),
       });
       const data = await response.json();
       if (data.status === "ok") {
         setNotionStatus("saved");
         toast("success", "Notion에 저장되었습니다!");
+        setAnalyses((prev) => {
+          const updated = prev.map((a) =>
+            a.id === analysis.id
+              ? { ...a, savedToNotion: true, notionUrl: data.notionUrl }
+              : a
+          );
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          } catch { /* ignore */ }
+          return updated;
+        });
       } else {
         throw new Error(data.message || "저장 실패");
       }
@@ -369,12 +525,37 @@ ${analysis.tags.join(", ")}`;
         )}
       </div>
 
-      {/* Analysis Count */}
-      <div className="flex items-center justify-between">
+      {/* Analysis Count + Sync Button */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">
           총 {analyses.length}개의 뉴스 분석
+          {hydrated && analyses.filter((a) => !a.savedToNotion).length > 0 && (
+            <span className="ml-2 text-orange-500">
+              ({analyses.filter((a) => !a.savedToNotion).length}개 미동기화)
+            </span>
+          )}
         </span>
+        {hydrated && analyses.filter((a) => !a.savedToNotion).length > 0 && (
+          <button
+            onClick={handleSyncAllToNotion}
+            disabled={syncingAll}
+            className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {syncingAll ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="h-4 w-4" />
+            )}
+            {syncingAll ? "동기화 중..." : "모두 Notion에 동기화"}
+          </button>
+        )}
       </div>
+      {syncingAll && syncProgress && (
+        <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2.5 text-sm text-blue-600 dark:text-blue-400">
+          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+          {syncProgress}
+        </div>
+      )}
 
       {/* Analysis Cards */}
       <div className="space-y-4">

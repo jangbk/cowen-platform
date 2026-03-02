@@ -470,10 +470,18 @@ ${summary.tags.join(", ")}`;
   };
 
   const handleDeleteConfirm = (id: string) => {
+    const target = summaries.find((s) => s.id === id);
     saveSummaries(summaries.filter((s) => s.id !== id));
     if (expandedId === id) setExpandedId(null);
     setDeletingId(null);
     toast("success", "요약이 삭제되었습니다.");
+
+    // Notion에서도 삭제 (savedToNotion인 경우)
+    if (target?.savedToNotion) {
+      fetch(`/api/notion/summaries?pageId=${id}`, { method: "DELETE" }).catch(
+        () => {}
+      );
+    }
   };
 
   return (

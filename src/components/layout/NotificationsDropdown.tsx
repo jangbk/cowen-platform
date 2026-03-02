@@ -246,7 +246,7 @@ export function NotificationsDropdown() {
   }, [open]);
 
   return (
-    <div ref={ref} className="relative hidden sm:block">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
         className="relative rounded-lg p-2 hover:bg-muted transition-colors"

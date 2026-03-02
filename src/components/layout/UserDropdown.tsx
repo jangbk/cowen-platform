@@ -53,7 +53,7 @@ export function UserDropdown() {
   }
 
   return (
-    <div ref={ref} className="relative hidden sm:block">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors"
