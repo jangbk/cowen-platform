@@ -84,8 +84,7 @@ export async function GET() {
       { source: "notion", ...notionVideo },
       {
         headers: {
-          "Cache-Control":
-            "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": "no-store",
         },
       }
     );
