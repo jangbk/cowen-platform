@@ -40,6 +40,7 @@ interface ExchangeFlow {
   outflow24h: number;
   netflow24h: number;
   netflow7d: number;
+  netflow30d: number;
   inflowNtv24h: number;
   outflowNtv24h: number;
   trend: "accumulation" | "distribution" | "neutral";
@@ -796,6 +797,7 @@ export default function CryptoTreasuriesPage() {
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">24h 유출</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">24h 순유출입</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">7일 순유출입</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">30일 순유출입</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">동향</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">출처</th>
                 </tr>
@@ -806,6 +808,8 @@ export default function CryptoTreasuriesPage() {
                     flow.netflow24h > 0 ? "text-red-500" : flow.netflow24h < 0 ? "text-green-500" : "text-muted-foreground";
                   const netColor7d =
                     flow.netflow7d > 0 ? "text-red-500" : flow.netflow7d < 0 ? "text-green-500" : "text-muted-foreground";
+                  const netColor30d =
+                    flow.netflow30d > 0 ? "text-red-500" : flow.netflow30d < 0 ? "text-green-500" : "text-muted-foreground";
                   return (
                     <tr key={flow.asset} className="border-b border-border hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-semibold">{flow.asset}</td>
@@ -818,6 +822,9 @@ export default function CryptoTreasuriesPage() {
                       </td>
                       <td className={`px-4 py-3 text-right font-mono ${netColor7d}`}>
                         {flow.netflow7d >= 0 ? "+" : ""}{formatCurrency(Math.abs(flow.netflow7d))}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono ${netColor30d}`}>
+                        {flow.netflow30d >= 0 ? "+" : ""}{formatCurrency(Math.abs(flow.netflow30d))}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${

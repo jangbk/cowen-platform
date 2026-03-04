@@ -13,6 +13,7 @@ interface ExchangeFlow {
   outflow24h: number;
   netflow24h: number;
   netflow7d: number;
+  netflow30d: number;
   inflowNtv24h: number;
   outflowNtv24h: number;
   trend: "accumulation" | "distribution" | "neutral";
@@ -39,6 +40,7 @@ const FALLBACK_FLOWS: ExchangeFlow[] = [
     outflow24h: 38_500_000,
     netflow24h: 3_500_000,
     netflow7d: -12_000_000,
+    netflow30d: -85_000_000,
     inflowNtv24h: 18_200_000,
     outflowNtv24h: 16_700_000,
     trend: "neutral",
@@ -50,6 +52,7 @@ const FALLBACK_FLOWS: ExchangeFlow[] = [
     outflow24h: 790_000_000,
     netflow24h: 30_000_000,
     netflow7d: 150_000_000,
+    netflow30d: 620_000_000,
     inflowNtv24h: 820_000_000,
     outflowNtv24h: 790_000_000,
     trend: "distribution",
@@ -61,6 +64,7 @@ const FALLBACK_FLOWS: ExchangeFlow[] = [
     outflow24h: 340_000_000,
     netflow24h: -30_000_000,
     netflow7d: -180_000_000,
+    netflow30d: -720_000_000,
     inflowNtv24h: 310_000_000,
     outflowNtv24h: 340_000_000,
     trend: "accumulation",
@@ -123,7 +127,7 @@ async function fetchCoinMetrics(asset: string): Promise<CoinMetricsRow[]> {
     `https://community-api.coinmetrics.io/v4/timeseries/asset-metrics` +
     `?assets=${asset.toLowerCase()}` +
     `&metrics=FlowInExUSD,FlowOutExUSD,FlowInExNtv,FlowOutExNtv` +
-    `&frequency=1d&page_size=7`;
+    `&frequency=1d&page_size=30`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`CoinMetrics ${res.status}`);
@@ -143,11 +147,13 @@ function parseFlow(rows: CoinMetricsRow[], asset: string): ExchangeFlow {
   const inflowNtv24h = parseFloat(latest.FlowInExNtv ?? "0");
   const outflowNtv24h = parseFloat(latest.FlowOutExNtv ?? "0");
 
-  // 7d netflow = sum of all rows
-  const netflow7d = rows.reduce((sum, r) => {
-    const inUsd = parseFloat(r.FlowInExUSD ?? "0");
-    const outUsd = parseFloat(r.FlowOutExUSD ?? "0");
-    return sum + (inUsd - outUsd);
+  // 7d and 30d netflow from available rows
+  const last7 = rows.slice(-7);
+  const netflow7d = last7.reduce((sum, r) => {
+    return sum + (parseFloat(r.FlowInExUSD ?? "0") - parseFloat(r.FlowOutExUSD ?? "0"));
+  }, 0);
+  const netflow30d = rows.reduce((sum, r) => {
+    return sum + (parseFloat(r.FlowInExUSD ?? "0") - parseFloat(r.FlowOutExUSD ?? "0"));
   }, 0);
 
   // Determine trend: positive netflow = distribution (inflow > outflow → sell pressure)
@@ -163,6 +169,7 @@ function parseFlow(rows: CoinMetricsRow[], asset: string): ExchangeFlow {
     outflow24h: Math.round(outflow24h),
     netflow24h: Math.round(netflow24h),
     netflow7d: Math.round(netflow7d),
+    netflow30d: Math.round(netflow30d),
     inflowNtv24h,
     outflowNtv24h,
     trend,
@@ -209,6 +216,7 @@ export async function GET() {
       outflow24h: 1_380_000_000,
       netflow24h: -130_000_000,
       netflow7d: -820_000_000,
+      netflow30d: -3_200_000_000,
       inflowNtv24h: 12_700,
       outflowNtv24h: 14_020,
       trend: "accumulation",
@@ -220,6 +228,7 @@ export async function GET() {
       outflow24h: 390_000_000,
       netflow24h: 30_000_000,
       netflow7d: -95_000_000,
+      netflow30d: -450_000_000,
       inflowNtv24h: 127_800,
       outflowNtv24h: 118_700,
       trend: "neutral",
