@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Building, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Wifi, WifiOff, Coins, Globe, Lock, Pickaxe } from "lucide-react";
+import { Building, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Wifi, WifiOff, Coins, Globe, Lock, Pickaxe, ArrowRightLeft, Waves } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +32,28 @@ interface SupplyBreakdown {
   description: string;
   color: string;
   icon: "coins" | "lock" | "globe" | "pickaxe" | "building";
+}
+
+interface ExchangeFlow {
+  asset: string;
+  inflow24h: number;
+  outflow24h: number;
+  netflow24h: number;
+  netflow7d: number;
+  inflowNtv24h: number;
+  outflowNtv24h: number;
+  trend: "accumulation" | "distribution" | "neutral";
+  source: "coinmetrics" | "estimated";
+}
+
+interface WhaleTransaction {
+  time: string;
+  asset: string;
+  amount: number;
+  amountUsd: number;
+  from: string;
+  to: string;
+  type: "exchange_deposit" | "exchange_withdrawal" | "wallet_transfer";
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +273,10 @@ export default function CryptoTreasuriesPage() {
   const [priceSource, setPriceSource] = useState<string>("loading");
   const [btcEtfs, setBtcEtfs] = useState<ETFHolding[]>(BTC_ETFS_DEFAULT);
   const [etfSource, setEtfSource] = useState<string>("");
+  const [exchangeFlows, setExchangeFlows] = useState<ExchangeFlow[]>([]);
+  const [whaleTxs, setWhaleTxs] = useState<WhaleTransaction[]>([]);
+  const [whaleSource, setWhaleSource] = useState<string>("loading");
+  const [whalePeriod, setWhalePeriod] = useState<"recent" | "7d" | "15d" | "30d">("recent");
 
   useEffect(() => {
     async function fetchPrices() {
@@ -287,8 +313,22 @@ export default function CryptoTreasuriesPage() {
       }
     }
 
+    async function fetchWhaleFlow() {
+      try {
+        const res = await fetch("/api/crypto/whale-flow");
+        if (!res.ok) throw new Error("Whale flow API error");
+        const data = await res.json();
+        if (data.flows) setExchangeFlows(data.flows);
+        if (data.whales) setWhaleTxs(data.whales);
+        setWhaleSource(data.cached ? "캐시" : "실시간");
+      } catch {
+        setWhaleSource("연결 실패");
+      }
+    }
+
     fetchPrices();
     fetchBtcEtf();
+    fetchWhaleFlow();
   }, []);
 
   const companies = useMemo(() => {
@@ -310,6 +350,35 @@ export default function CryptoTreasuriesPage() {
   const price = livePrices[tab];
   const supply = SUPPLIES[tab];
   const sym = SYMBOLS[tab];
+
+  const filteredWhales = useMemo(() => {
+    if (whaleTxs.length === 0) return [];
+    const now = new Date("2026-03-05T12:00:00Z").getTime(); // reference date
+    const cutoffs: Record<string, number> = {
+      recent: 2 * 24 * 60 * 60 * 1000,   // 2 days
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "15d": 15 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+    };
+    const cutoff = now - (cutoffs[whalePeriod] ?? cutoffs.recent);
+    return whaleTxs.filter((tx) => new Date(tx.time).getTime() >= cutoff);
+  }, [whaleTxs, whalePeriod]);
+
+  // Whale summary stats for selected period
+  const whaleSummary = useMemo(() => {
+    const deposits = filteredWhales.filter((t) => t.type === "exchange_deposit");
+    const withdrawals = filteredWhales.filter((t) => t.type === "exchange_withdrawal");
+    const transfers = filteredWhales.filter((t) => t.type === "wallet_transfer");
+    return {
+      totalTxs: filteredWhales.length,
+      depositCount: deposits.length,
+      depositUsd: deposits.reduce((s, t) => s + t.amountUsd, 0),
+      withdrawalCount: withdrawals.length,
+      withdrawalUsd: withdrawals.reduce((s, t) => s + t.amountUsd, 0),
+      transferCount: transfers.length,
+      transferUsd: transfers.reduce((s, t) => s + t.amountUsd, 0),
+    };
+  }, [filteredWhales]);
 
   const donutSegments = tab === "bitcoin"
     ? [
@@ -704,6 +773,192 @@ export default function CryptoTreasuriesPage() {
           XRP에는 아직 승인된 미국 현물 ETF가 없습니다. 2025년 여러 자산운용사가 XRP ETF를 신청했으며, SEC 심사가 진행 중입니다.
           Ripple의 에스크로 시스템은 매월 1일에 10억 XRP를 해제하며, 미사용분은 에스크로로 재잠금됩니다.
         </div>
+      )}
+
+      {/* ─── Exchange Flow Section ─── */}
+      {exchangeFlows.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <ArrowRightLeft className="h-5 w-5 text-blue-500" />
+            거래소 자금 흐름 (Exchange Flow)
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              {whaleSource === "loading" ? (
+                <span className="inline-flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin" /> 로딩 중</span>
+              ) : whaleSource}
+            </span>
+          </h2>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">코인</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">24h 유입</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">24h 유출</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">24h 순유출입</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">7일 순유출입</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">동향</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">출처</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exchangeFlows.map((flow) => {
+                  const netColor24 =
+                    flow.netflow24h > 0 ? "text-red-500" : flow.netflow24h < 0 ? "text-green-500" : "text-muted-foreground";
+                  const netColor7d =
+                    flow.netflow7d > 0 ? "text-red-500" : flow.netflow7d < 0 ? "text-green-500" : "text-muted-foreground";
+                  return (
+                    <tr key={flow.asset} className="border-b border-border hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-semibold">{flow.asset}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(flow.inflow24h)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(flow.outflow24h)}</td>
+                      <td className={`px-4 py-3 text-right font-mono ${netColor24}`}>
+                        {flow.netflow24h >= 0 ? "+" : ""}{formatCurrency(Math.abs(flow.netflow24h))}
+                        {flow.netflow24h < 0 && " ↓"}
+                        {flow.netflow24h > 0 && " ↑"}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono ${netColor7d}`}>
+                        {flow.netflow7d >= 0 ? "+" : ""}{formatCurrency(Math.abs(flow.netflow7d))}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          flow.trend === "accumulation"
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : flow.trend === "distribution"
+                            ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                            : "bg-gray-500/10 text-gray-500"
+                        }`}>
+                          {flow.trend === "accumulation" && "축적"}
+                          {flow.trend === "distribution" && "분산"}
+                          {flow.trend === "neutral" && "중립"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-[10px] ${flow.source === "coinmetrics" ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                          {flow.source === "coinmetrics" ? "CoinMetrics" : "추정치"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            순유입(+, 빨간색) = 거래소로 이동 → 매도 압력 | 순유출(-, 녹색) = 거래소에서 인출 → 보유 의지 (축적)
+          </p>
+        </section>
+      )}
+
+      {/* ─── Whale Transactions Section ─── */}
+      {whaleTxs.length > 0 && (
+        <section>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Waves className="h-5 w-5 text-purple-500" />
+              고래 트랜잭션 (대형 이동)
+            </h2>
+            {/* Period tabs */}
+            <div className="flex gap-1 rounded-lg border border-border bg-card p-0.5 w-fit">
+              {([
+                { key: "recent" as const, label: "최근" },
+                { key: "7d" as const, label: "7일" },
+                { key: "15d" as const, label: "15일" },
+                { key: "30d" as const, label: "30일" },
+              ]).map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => setWhalePeriod(p.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    whalePeriod === p.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-muted-foreground">총 건수</p>
+              <p className="text-xl font-bold mt-0.5">{whaleSummary.totalTxs}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-red-500">거래소 입금</p>
+              <p className="text-lg font-bold mt-0.5 text-red-500">{whaleSummary.depositCount}건</p>
+              <p className="text-xs text-muted-foreground">{formatCurrency(whaleSummary.depositUsd)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-green-500">거래소 출금</p>
+              <p className="text-lg font-bold mt-0.5 text-green-500">{whaleSummary.withdrawalCount}건</p>
+              <p className="text-xs text-muted-foreground">{formatCurrency(whaleSummary.withdrawalUsd)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-muted-foreground">지갑 이동</p>
+              <p className="text-lg font-bold mt-0.5">{whaleSummary.transferCount}건</p>
+              <p className="text-xs text-muted-foreground">{formatCurrency(whaleSummary.transferUsd)}</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">시간</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">코인</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">수량</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">USD 가치</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">출발</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">도착</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">유형</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredWhales.map((tx, i) => {
+                  const typeColor =
+                    tx.type === "exchange_deposit"
+                      ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                      : tx.type === "exchange_withdrawal"
+                      ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                      : "bg-gray-500/10 text-gray-500";
+                  const typeLabel =
+                    tx.type === "exchange_deposit" ? "거래소 입금"
+                    : tx.type === "exchange_withdrawal" ? "거래소 출금"
+                    : "지갑 이동";
+                  const timeStr = new Date(tx.time).toLocaleString("ko-KR", {
+                    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                  });
+                  return (
+                    <tr key={`${tx.time}-${tx.asset}-${i}`} className="border-b border-border hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{timeStr}</td>
+                      <td className="px-4 py-3 font-semibold">{tx.asset}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatAmount(tx.amount)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(tx.amountUsd)}</td>
+                      <td className="px-4 py-3 text-xs">{tx.from}</td>
+                      <td className="px-4 py-3 text-xs">{tx.to}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColor}`}>
+                          {typeLabel}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredWhales.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      해당 기간에 기록된 대형 이동이 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            거래소 입금(빨간) = 매도 가능성 | 거래소 출금(녹색) = 보유 의지 | 지갑 이동(회색) = OTC 또는 내부 이동. 데이터는 큐레이션 기반.
+          </p>
+        </section>
       )}
     </div>
   );
