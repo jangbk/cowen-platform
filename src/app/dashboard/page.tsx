@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
-import { ExternalLink, RefreshCw, Play, ChevronRight, Lightbulb, Pencil, X, Plus, Check } from "lucide-react";
+import { ExternalLink, RefreshCw, Play, ChevronRight, Lightbulb, Pencil, X, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import GaugeChart from "@/components/ui/GaugeChart";
 import SparklineChart from "@/components/ui/SparklineChart";
 import {
@@ -221,6 +221,21 @@ export default function DashboardPage() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [latestVideo, setLatestVideo] = useState<LatestVideoData | null>(null);
 
+  // ─── Sorting ────────────────────────────────────────────────────
+  type SortKey = "default" | "price" | "change24h" | "change7d" | "marketCap" | "volume";
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleSort = useCallback((key: SortKey) => {
+    if (key === sortKey) {
+      if (sortDir === "desc") setSortDir("asc");
+      else { setSortKey("default"); setSortDir("desc"); }
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }, [sortKey, sortDir]);
+
   // ─── Favorite Assets ────────────────────────────────────────────
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [editMode, setEditMode] = useState(false);
@@ -273,13 +288,32 @@ export default function DashboardPage() {
     localStorage.setItem("favoriteAssetIds", JSON.stringify(ids));
   }, []);
 
-  // ─── Filtered assets based on favoriteIds ──────────────────────
+  // ─── Filtered + sorted assets ───────────────────────────────────
   const filteredAssets = useMemo(() => {
-    if (favoriteIds.length === 0) return assets.slice(0, 10);
-    return favoriteIds
-      .map((id) => assets.find((a) => a.id === id))
-      .filter((a): a is CryptoAsset => a !== undefined);
-  }, [favoriteIds, assets]);
+    let list: CryptoAsset[];
+    if (favoriteIds.length === 0) {
+      list = assets.slice(0, 10);
+    } else {
+      list = favoriteIds
+        .map((id) => assets.find((a) => a.id === id))
+        .filter((a): a is CryptoAsset => a !== undefined);
+    }
+    if (sortKey === "default") return list;
+    const sorted = [...list].sort((a, b) => {
+      const getVal = (asset: CryptoAsset) => {
+        switch (sortKey) {
+          case "price": return asset.current_price;
+          case "change24h": return asset.price_change_percentage_24h ?? 0;
+          case "change7d": return asset.price_change_percentage_7d_in_currency ?? 0;
+          case "marketCap": return asset.market_cap;
+          case "volume": return asset.total_volume;
+          default: return 0;
+        }
+      };
+      return sortDir === "desc" ? getVal(b) - getVal(a) : getVal(a) - getVal(b);
+    });
+    return sorted;
+  }, [favoriteIds, assets, sortKey, sortDir]);
 
   // ─── Available coins for adding (not already in favorites) ─────
   const availableCoins = useMemo(() => {
@@ -421,10 +455,27 @@ export default function DashboardPage() {
                       <tr className="border-b border-border text-left text-muted-foreground">
                         <th className="pb-3 pr-4">#</th>
                         <th className="pb-3 pr-4">Name</th>
-                        <th className="pb-3 pr-4 text-right">Price</th>
-                        <th className="pb-3 pr-4 text-right">24h %</th>
-                        <th className="pb-3 pr-4 text-right">7d %</th>
-                        <th className="pb-3 pr-4 text-right">Market Cap</th>
+                        {([
+                          { key: "price" as SortKey, label: "Price" },
+                          { key: "change24h" as SortKey, label: "24h %" },
+                          { key: "change7d" as SortKey, label: "7d %" },
+                          { key: "marketCap" as SortKey, label: "Market Cap" },
+                          { key: "volume" as SortKey, label: "Volume" },
+                        ]).map((col) => (
+                          <th key={col.key} className="pb-3 pr-4 text-right">
+                            <button
+                              onClick={() => handleSort(col.key)}
+                              className="inline-flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
+                            >
+                              {col.label}
+                              {sortKey === col.key ? (
+                                sortDir === "desc" ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-40" />
+                              )}
+                            </button>
+                          </th>
+                        ))}
                         <th className="pb-3 text-right">Last 7 Days</th>
                         {editMode && <th className="pb-3 pl-2 w-8"></th>}
                       </tr>
@@ -483,6 +534,9 @@ export default function DashboardPage() {
                           </td>
                           <td className="py-3 pr-4 text-right font-mono">
                             {formatCurrency(asset.market_cap, 0)}
+                          </td>
+                          <td className="py-3 pr-4 text-right font-mono text-muted-foreground">
+                            {formatCompactNumber(asset.total_volume)}
                           </td>
                           <td className="py-3 text-right">
                             {asset.sparkline_in_7d?.price ? (
