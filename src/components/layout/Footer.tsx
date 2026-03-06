@@ -22,7 +22,7 @@ const FOOTER_LINKS = [
   {
     title: "Content",
     links: [
-      { label: "Crypto News", href: "/content/studies" },
+      { label: "Crypto News", href: "/content/crypto-news" },
       { label: "Crypto Channels", href: "/content/premium-videos" },
     ],
   },

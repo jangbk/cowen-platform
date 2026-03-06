@@ -29,7 +29,7 @@ const PATH_LABELS: Record<string, string> = {
   "metric-analyzer": "Metric Analyzer",
   "bot-performance": "Bot Performance",
   backtest: "Backtest",
-  studies: "Crypto News",
+  "crypto-news": "Crypto News",
   "premium-videos": "Crypto Channels",
   "video-summaries": "Video Summaries",
 };

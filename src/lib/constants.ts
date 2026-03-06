@@ -60,7 +60,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: "News Analysis", href: "/content/news-analysis" },
       { label: "Video Summaries", href: "/content/video-summaries" },
-      { label: "Crypto News", href: "/content/studies" },
+      { label: "Crypto News", href: "/content/crypto-news" },
       { label: "Crypto Channels", href: "/content/premium-videos" },
       { label: "Stock Daily", href: "/content/stock-daily" },
     ],

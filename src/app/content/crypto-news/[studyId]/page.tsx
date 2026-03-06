@@ -7,7 +7,7 @@ export default function StudyDetailPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/content/studies");
+    router.replace("/content/crypto-news");
   }, [router]);
 
   return (

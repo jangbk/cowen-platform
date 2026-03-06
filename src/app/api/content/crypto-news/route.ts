@@ -8,10 +8,15 @@ import Anthropic from "@anthropic-ai/sdk";
 // RSS Feed Sources
 // ---------------------------------------------------------------------------
 const RSS_FEEDS = [
-  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },
-  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss" },
-  { name: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed" },
-  { name: "Decrypt", url: "https://decrypt.co/feed" },
+  // International
+  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", lang: "en" },
+  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", lang: "en" },
+  { name: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed", lang: "en" },
+  { name: "Decrypt", url: "https://decrypt.co/feed", lang: "en" },
+  // Korean
+  { name: "블록미디어", url: "https://www.blockmedia.co.kr/feed/", lang: "ko" },
+  { name: "코인니스", url: "https://coinness.com/feed", lang: "ko" },
+  { name: "디센터", url: "https://decenter.kr/feed", lang: "ko" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -115,9 +120,10 @@ interface Article {
   sourceUrl: string;
   tags: string[];
   category: string;
+  lang: "ko" | "en";
 }
 
-function parseItems(xml: string, sourceName: string): Article[] {
+function parseItems(xml: string, sourceName: string, lang: "ko" | "en" = "en"): Article[] {
   const articles: Article[] = [];
   const itemRe = /<item>([\s\S]*?)<\/item>/gi;
   let match;
@@ -146,6 +152,7 @@ function parseItems(xml: string, sourceName: string): Article[] {
       sourceUrl: link,
       tags: categories.length > 0 ? categories : [sourceName],
       category: categories[0] || "Crypto",
+      lang,
     });
   }
 
@@ -242,7 +249,7 @@ async function fetchAndSummarize(): Promise<Article[]> {
   const feedResults = await Promise.allSettled(
     RSS_FEEDS.map(async (feed) => {
       const xml = await fetchFeed(feed.url);
-      return xml ? parseItems(xml, feed.name) : [];
+      return xml ? parseItems(xml, feed.name, feed.lang as "ko" | "en") : [];
     })
   );
   for (const result of feedResults) {
@@ -259,10 +266,11 @@ async function fetchAndSummarize(): Promise<Article[]> {
 
   // Sort by date desc, take 30
   unique.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const result = unique.slice(0, 30);
+  const result = unique.slice(0, 50);
 
-  // AI summarization
-  const summaries = await summarizeArticles(result);
+  // AI summarization (only for English articles)
+  const enArticles = result.filter((a) => a.lang === "en");
+  const summaries = await summarizeArticles(enArticles);
   if (summaries.size > 0) {
     for (const article of result) {
       const summary = summaries.get(article.id);
