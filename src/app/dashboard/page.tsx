@@ -413,7 +413,7 @@ export default function DashboardPage() {
   const fearGreedLabel = fearGreed?.classification || "Loading...";
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="mx-auto max-w-[1600px] p-4 sm:p-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         {/* ──── Main Content ──────────────────────────────────── */}
         <div className="space-y-6">
@@ -476,6 +476,7 @@ export default function DashboardPage() {
                             </button>
                           </th>
                         ))}
+                        <th className="pb-3 pr-4 text-center">Fiat Risk</th>
                         <th className="pb-3 text-right">Last 7 Days</th>
                         {editMode && <th className="pb-3 pl-2 w-8"></th>}
                       </tr>
@@ -537,6 +538,37 @@ export default function DashboardPage() {
                           </td>
                           <td className="py-3 pr-4 text-right font-mono text-muted-foreground">
                             {formatCompactNumber(asset.total_volume)}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {(() => {
+                              const risk = riskValues[asset.symbol.toUpperCase()] ?? null;
+                              if (risk === null) return <span className="text-xs text-muted-foreground">—</span>;
+                              const pct = Math.round(risk * 100);
+                              const barColor = risk < 0.3
+                                ? "bg-emerald-500"
+                                : risk < 0.5
+                                  ? "bg-yellow-500"
+                                  : risk < 0.7
+                                    ? "bg-orange-500"
+                                    : "bg-red-500";
+                              const textColor = risk < 0.3
+                                ? "text-emerald-500"
+                                : risk < 0.5
+                                  ? "text-yellow-500"
+                                  : risk < 0.7
+                                    ? "text-orange-500"
+                                    : "text-red-500";
+                              return (
+                                <div className="flex items-center gap-2 justify-center">
+                                  <div className="w-14 h-1.5 rounded-full bg-muted overflow-hidden">
+                                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className={`text-xs font-mono font-medium ${textColor}`}>
+                                    {risk.toFixed(2)}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-3 text-right">
                             {asset.sparkline_in_7d?.price ? (

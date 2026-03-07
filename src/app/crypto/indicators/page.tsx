@@ -548,7 +548,7 @@ export default function CryptoIndicatorsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-4 mx-auto max-w-[1600px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground">실시간 지표 데이터를 불러오는 중...</p>
       </div>
@@ -556,7 +556,7 @@ export default function CryptoIndicatorsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">

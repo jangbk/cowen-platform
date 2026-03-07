@@ -1300,13 +1300,13 @@ export default function ChartDetailPage() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
             href={backHref}
-            className="rounded-md p-1.5 hover:bg-muted transition-colors"
+            className="rounded-md p-1.5 hover:bg-muted transition-colors lg:hidden"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>

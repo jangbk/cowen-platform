@@ -6,14 +6,12 @@ import { Star, Wifi, WifiOff } from "lucide-react";
 import { getChartsBySection, getCategoriesForSection } from "@/data/chart-catalog";
 import type { ChartItem } from "@/data/chart-catalog";
 
-// Generate SVG line from real price data (normalized to 0-60 range)
 function priceDataToLine(prices: number[]): string {
   if (prices.length < 2) return "";
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 1;
   const step = 200 / (prices.length - 1);
-
   const points = prices.map((p, i) => {
     const x = i * step;
     const y = 55 - ((p - min) / range) * 50 + 5;
@@ -33,9 +31,9 @@ function ChartCard({ chart, sparkline }: { chart: ChartItem; sparkline?: number[
   return (
     <Link
       href={`/charts/${chart.id}`}
-      className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md"
+      className="group rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-md"
     >
-      <div className="relative h-20 mb-3 rounded-md bg-muted/30 overflow-hidden">
+      <div className="relative h-16 mb-2 rounded-md bg-muted/30 overflow-hidden">
         <svg viewBox="0 0 200 60" className="w-full h-full" preserveAspectRatio="none">
           <defs>
             <linearGradient id={`grad-${chart.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -53,8 +51,8 @@ function ChartCard({ chart, sparkline }: { chart: ChartItem; sparkline?: number[
           <Star className="h-3.5 w-3.5 text-muted-foreground hover:text-yellow-400" />
         </button>
       </div>
-      <h3 className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
-      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{chart.description}</p>
+      <h3 className="text-xs font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
+      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{chart.description}</p>
     </Link>
   );
 }
@@ -88,7 +86,6 @@ export default function CryptoChartsPage() {
   useEffect(() => {
     async function fetchSparklines() {
       try {
-        // Fetch BTC 30-day sparkline from CoinGecko
         const res = await fetch(
           "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30&interval=daily"
         );
@@ -96,7 +93,6 @@ export default function CryptoChartsPage() {
         const data = await res.json();
         const btcPrices = data.prices.map((p: [number, number]) => p[1]);
 
-        // Also fetch ETH
         const ethRes = await fetch(
           "https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=30&interval=daily"
         );
@@ -112,7 +108,6 @@ export default function CryptoChartsPage() {
     fetchSparklines();
   }, []);
 
-  // Assign sparklines to relevant charts
   function getSparkline(chartId: string): number[] | undefined {
     if (chartId.includes("btc") || chartId.includes("bitcoin") || chartId.includes("risk") || chartId.includes("rsi") || chartId.includes("macd") || chartId.includes("mvrv") || chartId.includes("log") || chartId.includes("rainbow") || chartId.includes("s2f") || chartId.includes("power") || chartId.includes("golden") || chartId.includes("pi-cycle") || chartId.includes("200w") || chartId.includes("2y-ma") || chartId.includes("fear") || chartId.includes("nupl") || chartId.includes("reserve") || chartId.includes("bollinger") || chartId.includes("stoch") || chartId.includes("support") || chartId.includes("fibonacci") || chartId.includes("momentum")) {
       return sparklines.btc;
@@ -122,20 +117,20 @@ export default function CryptoChartsPage() {
   }
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Crypto Charts</h1>
-        <p className="text-muted-foreground mt-1">
-          비트코인 및 암호화폐 차트 라이브러리 - 리스크, 회귀 모델, 기술적 분석, 모멘텀
-        </p>
-        <div className="mt-1.5">
+        <h1 className="text-xl font-bold">Crypto Charts</h1>
+        <div className="flex items-center gap-3 mt-1">
+          <p className="text-sm text-muted-foreground">
+            비트코인 및 암호화폐 차트 라이브러리
+          </p>
           {dataSource.includes("CoinGecko") ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
-              <Wifi className="h-3 w-3" /> {dataSource}
+            <span className="flex items-center gap-1 text-[10px] font-medium text-green-600 dark:text-green-400">
+              <Wifi className="h-3 w-3" /> Live
             </span>
           ) : dataSource !== "loading" ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-              <WifiOff className="h-3 w-3" /> {dataSource}
+            <span className="flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              <WifiOff className="h-3 w-3" /> Preview
             </span>
           ) : null}
         </div>
@@ -145,8 +140,8 @@ export default function CryptoChartsPage() {
         const charts = getChartsBySection("crypto", cat);
         return (
           <section key={cat}>
-            <h2 className="text-lg font-semibold mb-4">{cat}</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">{cat}</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {charts.map((chart) => (
                 <ChartCard key={chart.id} chart={chart} sparkline={getSparkline(chart.id)} />
               ))}

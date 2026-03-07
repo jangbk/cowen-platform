@@ -30,7 +30,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
   ],
 };
 
@@ -90,7 +90,7 @@ export default function RootLayout({
 
               <Breadcrumb />
 
-              <main id="main-content" className="mx-auto max-w-[1600px] min-h-[calc(100vh-3.5rem)]" role="main">
+              <main id="main-content" className="min-h-[calc(100vh-3rem)]" role="main">
                 {children}
               </main>
 

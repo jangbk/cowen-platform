@@ -114,7 +114,7 @@ export default function MetalsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8 mx-auto max-w-[1600px]">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Gem className="h-6 w-6 text-primary" />

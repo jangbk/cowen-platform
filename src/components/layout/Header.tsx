@@ -331,8 +331,8 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-md" role="banner">
-        <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-4 px-4">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm" role="banner">
+        <div className="mx-auto flex h-12 items-center gap-4 px-4">
           {/* Mobile menu button */}
           <button
             ref={mobileMenuTriggerRef}

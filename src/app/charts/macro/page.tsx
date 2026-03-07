@@ -24,8 +24,8 @@ function generateRandomLine(id: string): string {
 
 function ChartCard({ chart }: { chart: ChartItem }) {
   return (
-    <Link href={`/charts/${chart.id}`} className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md">
-      <div className="relative h-20 mb-3 rounded-md bg-muted/30 overflow-hidden">
+    <Link href={`/charts/${chart.id}`} className="group rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-md">
+      <div className="relative h-16 mb-2 rounded-md bg-muted/30 overflow-hidden">
         <svg viewBox="0 0 200 60" className="w-full h-full" preserveAspectRatio="none">
           <defs>
             <linearGradient id={`grad-${chart.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -40,8 +40,8 @@ function ChartCard({ chart }: { chart: ChartItem }) {
           <Star className="h-3.5 w-3.5 text-muted-foreground hover:text-yellow-400" />
         </button>
       </div>
-      <h3 className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
-      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{chart.description}</p>
+      <h3 className="text-xs font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
+      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{chart.description}</p>
     </Link>
   );
 }
@@ -50,15 +50,13 @@ export default function MacroChartsPage() {
   const categories = getCategoriesForSection("macro");
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Macro Charts</h1>
-        <p className="text-muted-foreground mt-1">
-          거시경제 지표 차트 - GDP, 인플레이션, 고용, 금리, 통화량
-        </p>
-        <div className="mt-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <WifiOff className="h-3 w-3" /> 차트 클릭 시 실시간 데이터 로드 (FRED API 키 설정 시 활성화)
+        <h1 className="text-xl font-bold">Macro Charts</h1>
+        <div className="flex items-center gap-3 mt-1">
+          <p className="text-sm text-muted-foreground">거시경제 지표 차트 - GDP, 인플레이션, 고용, 금리</p>
+          <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <WifiOff className="h-3 w-3" /> FRED API
           </span>
         </div>
       </div>
@@ -67,8 +65,8 @@ export default function MacroChartsPage() {
         const charts = getChartsBySection("macro", cat);
         return (
           <section key={cat}>
-            <h2 className="text-lg font-semibold mb-4">{cat}</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">{cat}</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {charts.map((chart) => (
                 <ChartCard key={chart.id} chart={chart} />
               ))}

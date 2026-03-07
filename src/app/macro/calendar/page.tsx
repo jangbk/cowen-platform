@@ -238,7 +238,7 @@ export default function MacroCalendarPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="h-6 w-6 text-primary" />

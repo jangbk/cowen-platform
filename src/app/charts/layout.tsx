@@ -70,7 +70,7 @@ export default function ChartsLayout({
     <div className="flex">
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-border bg-card lg:block">
-        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-4">
+        <div className="sticky top-12 h-[calc(100vh-3rem)] overflow-y-auto p-4">
           {/* Tabs */}
           <div className="flex gap-1 mb-4">
             {(["crypto", "macro", "tradfi"] as const).map((tab) => (

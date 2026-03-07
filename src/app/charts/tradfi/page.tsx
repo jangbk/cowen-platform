@@ -42,8 +42,8 @@ function ChartCard({ chart, sparkline }: { chart: ChartItem; sparkline?: number[
   const fill = sparkline && sparkline.length > 5 ? `${line} L200,60 L0,60 Z` : `${generateRandomLine(chart.id)} L200,60 L0,60 Z`;
 
   return (
-    <Link href={`/charts/${chart.id}`} className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md">
-      <div className="relative h-20 mb-3 rounded-md bg-muted/30 overflow-hidden">
+    <Link href={`/charts/${chart.id}`} className="group rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-md">
+      <div className="relative h-16 mb-2 rounded-md bg-muted/30 overflow-hidden">
         <svg viewBox="0 0 200 60" className="w-full h-full" preserveAspectRatio="none">
           <defs>
             <linearGradient id={`grad-${chart.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -61,15 +61,15 @@ function ChartCard({ chart, sparkline }: { chart: ChartItem; sparkline?: number[
           <Star className="h-3.5 w-3.5 text-muted-foreground hover:text-yellow-400" />
         </button>
       </div>
-      <h3 className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
-      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{chart.description}</p>
+      <h3 className="text-xs font-medium group-hover:text-primary transition-colors line-clamp-1">{chart.title}</h3>
+      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{chart.description}</p>
     </Link>
   );
 }
 
 export default function TradFiChartsPage() {
   const categories = getCategoriesForSection("tradfi");
-  const [sparklines, setSparklines] = useState<Record<string, number[]>>({});
+  const [sparklines] = useState<Record<string, number[]>>({});
   const [dataSource, setDataSource] = useState<string>("loading");
 
   useEffect(() => {
@@ -79,8 +79,6 @@ export default function TradFiChartsPage() {
         if (!res.ok) throw new Error("API error");
         const json = await res.json();
         if (json.data && json.data.length > 0) {
-          // Use S&P 500 price as representative sparkline (single point, use for all)
-          // For real sparklines we'd need historical data; use price as latest data point
           setDataSource(json.source === "yahoo" ? "Yahoo Finance (실시간)" : "기본 프리뷰");
         } else {
           setDataSource("기본 프리뷰");
@@ -93,20 +91,18 @@ export default function TradFiChartsPage() {
   }, []);
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">TradFi Charts</h1>
-        <p className="text-muted-foreground mt-1">
-          전통 금융 차트 - 주식, 채권, 원자재, 밸류에이션 지표
-        </p>
-        <div className="mt-1.5">
+        <h1 className="text-xl font-bold">TradFi Charts</h1>
+        <div className="flex items-center gap-3 mt-1">
+          <p className="text-sm text-muted-foreground">전통 금융 차트 - 주식, 채권, 원자재</p>
           {dataSource.includes("Yahoo") ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
-              <Wifi className="h-3 w-3" /> 차트 클릭 시 실시간 데이터 로드
+            <span className="flex items-center gap-1 text-[10px] font-medium text-green-600 dark:text-green-400">
+              <Wifi className="h-3 w-3" /> Live
             </span>
           ) : dataSource !== "loading" ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <WifiOff className="h-3 w-3" /> 차트 클릭 시 실시간 데이터 로드
+            <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+              <WifiOff className="h-3 w-3" /> Preview
             </span>
           ) : null}
         </div>
@@ -116,8 +112,8 @@ export default function TradFiChartsPage() {
         const charts = getChartsBySection("tradfi", cat);
         return (
           <section key={cat}>
-            <h2 className="text-lg font-semibold mb-4">{cat}</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">{cat}</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {charts.map((chart) => (
                 <ChartCard key={chart.id} chart={chart} sparkline={sparklines[chart.id]} />
               ))}

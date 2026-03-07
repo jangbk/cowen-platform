@@ -712,7 +712,7 @@ export default function MacroIndicatorsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-4 mx-auto max-w-[1600px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground">거시경제 지표를 불러오는 중...</p>
       </div>
@@ -720,7 +720,7 @@ export default function MacroIndicatorsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">

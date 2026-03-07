@@ -94,7 +94,7 @@ export default function StocksPage() {
   const sectors = ["all", ...new Set(stocks.map((s) => s.sector))];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       <div>
         <h1 className="text-2xl font-bold">Stocks</h1>
         <p className="text-muted-foreground mt-1">

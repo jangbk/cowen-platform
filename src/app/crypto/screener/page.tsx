@@ -143,7 +143,7 @@ export default function CryptoScreenerPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       <div>
         <h1 className="text-2xl font-bold">Crypto Screener</h1>
         <p className="text-muted-foreground mt-1">

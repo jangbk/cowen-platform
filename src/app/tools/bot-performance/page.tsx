@@ -307,7 +307,7 @@ export default function BotPerformancePage() {
     : "0.0";
 
   return (
-    <div className="p-6">
+    <div className="p-6 mx-auto max-w-[1600px]">
       {/* Header */}
       <div className="mb-4">
         <div className="flex items-center justify-between">

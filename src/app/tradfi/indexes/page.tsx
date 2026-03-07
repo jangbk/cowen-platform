@@ -64,7 +64,7 @@ export default function IndexesPage() {
   }, []);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <BarChart3 className="h-6 w-6 text-primary" />

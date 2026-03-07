@@ -508,7 +508,7 @@ export default function StockDailyPage() {
   const isCalendar = activeTab === "경제일정" || activeTab === "US_경제일정";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 mx-auto max-w-[1600px]">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
